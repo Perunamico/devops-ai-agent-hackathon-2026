@@ -1,0 +1,32 @@
+### Health
+GET http://localhost:8080/health
+
+### 学習計画
+POST http://localhost:8080/api/plan
+Content-Type: application/json
+
+{"user_id":"demo_user","message":"2週間でGoogle CloudのAIエージェント開発を学習したい","deadline":"2週間後","max_loops":3,"quality_threshold":80}
+
+### ハッカソン開発計画
+POST http://localhost:8080/api/plan
+Content-Type: application/json
+
+{"user_id":"hack_user","message":"ハッカソンの作品アイデアをCloud RunとGeminiで実装可能なレベルに落としたい","deadline":"3日後","max_loops":3,"quality_threshold":80}
+
+### 就活ES
+POST http://localhost:8080/api/plan
+Content-Type: application/json
+
+{"user_id":"career_user","message":"就活ESの志望理由がまとまらない。明日までに提出したい","deadline":"明日","max_loops":3,"quality_threshold":80}
+
+### 生活タスク
+POST http://localhost:8080/api/plan
+Content-Type: application/json
+
+{"user_id":"life_user","message":"部屋の片付けと買い物と勉強を今日中に終わらせたい","deadline":"今日","max_loops":3,"quality_threshold":80}
+
+### 空入力エラー
+POST http://localhost:8080/api/plan
+Content-Type: application/json
+
+{"user_id":"demo_user","message":""}
