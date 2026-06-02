@@ -1,6 +1,6 @@
 # AI Pet — DevOps x AI Agent Hackathon 2026
 
-ユーザーの趣味嗜好を記憶し、他ユーザーのAIペットと交流することで会話のきっかけを提案するWebアプリのバックエンドです。
+ユーザーの趣味嗜好を記憶し、近くにいる他ユーザーのAIペットと**鳴き声通信**で交流することで、自然な会話のきっかけを提案するWebアプリです。
 
 ## 仕様ドキュメント
 
@@ -9,6 +9,7 @@
 | [docs/agent_role.md](docs/agent_role.md) | AIペットの役割・記憶分類・口調仕様 |
 | [docs/flow.md](docs/flow.md) | 全フロー図（初期設定〜交流履歴まで7フロー + ERD） |
 | [docs/stack.md](docs/stack.md) | 技術スタック・Docker構成仕様 |
+| [docs/frontend.md](docs/frontend.md) | フロントエンド構成・画面仕様・音声通信実装 |
 
 ---
 
@@ -39,12 +40,12 @@
 
 | 領域 | 技術 |
 |------|------|
+| Frontend | Vite + React + TypeScript + TailwindCSS |
 | Backend | FastAPI (Python 3.12) |
 | AI | Vertex AI Gemini (`gemini-2.5-flash`) |
 | Database | Firestore |
 | Auth | Firebase Authentication |
-| Deploy | Cloud Run (Docker) |
-| Frontend | Next.js + Firebase Hosting（本リポジトリ対象外） |
+| Deploy | Cloud Run (Docker) + Firebase Hosting |
 
 ---
 
@@ -56,37 +57,42 @@
 ├── docs/
 │   ├── agent_role.md          # AIペットの役割・口調仕様
 │   ├── flow.md                # 全フロー図（Mermaid）
-│   └── stack.md               # 技術スタック・Docker仕様
+│   ├── stack.md               # 技術スタック・Docker仕様
+│   └── frontend.md            # フロントエンド構成・音声通信仕様
+├── frontend/                  # Vite + React フロントエンド
+│   ├── src/
+│   │   ├── App.tsx            # 画面状態管理・BottomNav
+│   │   ├── types.ts           # バックエンドスキーマ対応型定義
+│   │   ├── api.ts             # 全APIクライアント関数
+│   │   ├── audio.ts           # 鳴き声通信（Web Audio API + FFT）
+│   │   └── screens/           # 6画面コンポーネント
+│   ├── package.json
+│   └── vite.config.ts         # /api → localhost:8080 プロキシ設定
 └── backend/
     ├── Dockerfile             # python:3.12-slim、PORT=8080
-    ├── .dockerignore
     ├── .env.example           # 環境変数テンプレート
-    ├── requirements.txt       # Python依存パッケージ
+    ├── requirements.txt
     ├── sample_requests.http   # E2Eテスト用HTTPリクエスト集
     ├── app/
     │   ├── main.py            # FastAPI app + 全12エンドポイント
     │   ├── config.py          # 環境変数設定 (pydantic-settings)
     │   ├── agents/
-    │   │   ├── memory_agent.py      # LLM1（記憶分類）+ LLM4（反応→更新）
+    │   │   ├── memory_agent.py      # LLM1 + LLM4
     │   │   ├── pet_persona_agent.py # LLM1（初期プロフィール抽出）
-    │   │   ├── encounter_agent.py   # LLM2（Public Memory照合）+ トークン発行
+    │   │   ├── encounter_agent.py   # LLM2 + トークン発行
     │   │   └── topic_agent.py       # LLM3（カード・レポート生成）
     │   ├── services/
     │   │   ├── vertex_ai_service.py # Gemini呼び出し（JSON強制、3リトライ）
     │   │   ├── firestore_service.py # Firestore CRUD（インメモリ fallback付き）
     │   │   └── token_service.py     # Firebase Auth + 超音波トークンエンコード
     │   ├── schemas/
-    │   │   ├── pet.py          # PetCreate / PetResponse / UserInputCreate
-    │   │   ├── memory.py       # MemoryClassifyResult / PublicMemoryResponse 等
-    │   │   └── encounter.py    # ExchangeToken / Session / Analysis / Report 等
+    │   │   ├── pet.py
+    │   │   ├── memory.py
+    │   │   └── encounter.py
     │   └── utils/
-    │       ├── json_utils.py   # Gemini出力からJSONを抽出するヘルパー
-    │       └── rule_filter.py  # 電話番号・メール・住所のルールベース遮断
+    │       ├── json_utils.py
+    │       └── rule_filter.py
     └── tests/
-        ├── test_health.py
-        ├── test_memory_agent.py
-        ├── test_encounter_agent.py
-        └── test_topic_agent.py
 ```
 
 ---
@@ -95,26 +101,19 @@
 
 ### 前提条件
 
-- Docker Desktop がインストール済みであること
-- Gemini API キー（[Google AI Studio](https://aistudio.google.com/) で取得）または GCP プロジェクト
+- Node.js 18以上、npm
+- Python 3.12
+- Gemini API キー（[Google AI Studio](https://aistudio.google.com/) で取得）
 
-### 手順
+### バックエンド起動
 
-**1. リポジトリをクローン**
-
-```bash
-git clone https://github.com/Perunamico/devops-ai-agent-hackathon-2026.git
-cd devops-ai-agent-hackathon-2026
-git checkout feature/ai-pet-backend
-```
-
-**2. 環境変数ファイルを作成**
+**1. 環境変数ファイルを作成**
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-`backend/.env` を編集して `GEMINI_API_KEY` を設定します（ローカル開発時）:
+`backend/.env` を編集:
 
 ```env
 GEMINI_API_KEY=your-gemini-api-key-here
@@ -124,19 +123,36 @@ FIRESTORE_ENABLED=false
 
 > `FIRESTORE_ENABLED=false` にするとFirestoreなしでインメモリで動作します。
 
-**3. Dockerでビルド・起動**
+**2. バックエンドを起動**
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --port 8080 --reload
+```
+
+```bash
+curl http://localhost:8080/health
+# → {"status":"ok"}
+```
+
+### フロントエンド起動
+
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:5173
+```
+
+ブラウザで http://localhost:5173 を開くとアプリが表示されます。
+
+### Docker での起動（バックエンドのみ）
 
 ```bash
 cd backend
 docker build -t ai-pet-api .
 docker run -p 8080:8080 --env-file .env ai-pet-api
-```
-
-**4. 動作確認**
-
-```bash
-curl http://localhost:8080/health
-# → {"status":"ok"}
 ```
 
 ---
@@ -159,8 +175,6 @@ curl http://localhost:8080/health
 | POST | `/reports/{id}/feedback` | 必須 | カードへの反応を送信（LLM4で記憶更新） |
 
 ### 認証ヘッダー
-
-本番環境では Firebase Authentication の ID トークンを使用します。
 
 ```
 Authorization: Bearer <Firebase ID Token>
@@ -216,13 +230,11 @@ pip install pytest pytest-asyncio httpx
 pytest tests/ -v
 ```
 
-### テスト内容
-
 | ファイル | テストケース |
 |---------|------------|
 | `test_health.py` | `GET /health` → 200 OK |
-| `test_memory_agent.py` | 電話番号→blocked（ルールベース）、カフェ→public、LLMエラー→privateフォールバック |
-| `test_encounter_agent.py` | トークン発行、期限切れトークン（410）、双方承認でLLM2実行 |
+| `test_memory_agent.py` | 電話番号→blocked、カフェ→public、LLMエラー→privateフォールバック |
+| `test_encounter_agent.py` | トークン発行、期限切れ（410）、双方承認でLLM2実行 |
 | `test_topic_agent.py` | その場カード3枚生成、帰宅後レポート6種類生成 |
 
 ---
@@ -234,11 +246,9 @@ PROJECT=your-project-id
 REGION=asia-northeast1
 IMAGE=$REGION-docker.pkg.dev/$PROJECT/ai-pet/api:latest
 
-# イメージをビルド・プッシュ
 docker build -t $IMAGE ./backend
 docker push $IMAGE
 
-# Cloud Run にデプロイ
 gcloud run deploy ai-pet-api \
   --image $IMAGE \
   --region $REGION \
@@ -268,6 +278,6 @@ gcloud run deploy ai-pet-api \
 | ブランチ | 内容 |
 |---------|------|
 | `main` | 本番ブランチ |
-| `feature/ai-pet-backend` | バックエンド実装（本ブランチ） |
+| `feature/ai-pet-backend` | バックエンド + フロントエンド実装（本ブランチ） |
 | `feature/gemini-chat` | シンプルなGemini chatサンプル |
 | `feature/agent-test` | エージェントランタイムの実験 |
