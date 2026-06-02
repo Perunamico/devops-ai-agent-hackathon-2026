@@ -36,7 +36,7 @@ class TokenService:
         return decoded["uid"]
 
     def generate_exchange_token(self) -> tuple[str, datetime]:
-        token = secrets.token_urlsafe(16)
+        token = secrets.token_urlsafe(6)
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=30)
         return token, expires_at
 
