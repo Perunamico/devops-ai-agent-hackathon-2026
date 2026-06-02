@@ -105,15 +105,23 @@
 - Python 3.12
 - Gemini API キー（[Google AI Studio](https://aistudio.google.com/) で取得）
 
-### バックエンド起動
+### フロントエンド + バックエンド 同時起動
 
-**1. 環境変数ファイルを作成**
+**1. リポジトリをクローン**
+
+```bash
+git clone https://github.com/Perunamico/devops-ai-agent-hackathon-2026.git
+cd devops-ai-agent-hackathon-2026
+git checkout feature/ai-pet-backend
+```
+
+**2. 環境変数ファイルを作成**
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-`backend/.env` を編集:
+`backend/.env` を編集して Gemini API キーを設定:
 
 ```env
 GEMINI_API_KEY=your-gemini-api-key-here
@@ -121,9 +129,9 @@ SKIP_AUTH=true
 FIRESTORE_ENABLED=false
 ```
 
-> `FIRESTORE_ENABLED=false` にするとFirestoreなしでインメモリで動作します。
+> `FIRESTORE_ENABLED=false` でFirestoreなしのインメモリモードで動作します。GCPアカウント不要。
 
-**2. バックエンドを起動**
+**3. バックエンドを起動**（ターミナル 1）
 
 ```bash
 cd backend
@@ -131,21 +139,31 @@ pip install -r requirements.txt
 uvicorn app.main:app --port 8080 --reload
 ```
 
+起動確認：
+
 ```bash
 curl http://localhost:8080/health
 # → {"status":"ok"}
 ```
 
-### フロントエンド起動
+**4. フロントエンドを起動**（ターミナル 2）
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# → http://localhost:5173
 ```
 
-ブラウザで http://localhost:5173 を開くとアプリが表示されます。
+**5. ブラウザで確認**
+
+http://localhost:5173 を開くとアプリが表示されます。
+
+```
+http://localhost:5173  ← フロントエンド（React）
+http://localhost:8080  ← バックエンドAPI（FastAPI）
+```
+
+フロントエンドの `/api/*` リクエストは自動的に `localhost:8080` へプロキシされます。
 
 ### Docker での起動（バックエンドのみ）
 
