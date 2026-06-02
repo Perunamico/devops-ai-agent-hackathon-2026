@@ -1,19 +1,20 @@
 // バックエンドのtoken_service.pyと同じエンコード仕様
-// FREQ_BASE = 17000, FREQ_STEP = 200（16ステップ）
+// FREQ_BASE = 700, FREQ_STEP = 200（16ステップ）
 // トークン8バイト → 16周波数（各バイトを上位/下位ニブルに分割）
-// パイロット同期トーン：16800 Hz
+// パイロット同期トーン：500 Hz
 
-const FREQ_BASE = 17000;
+const FREQ_BASE = 700;
 const FREQ_STEP = 200;
-const PILOT_FREQ = 16800;
-const TONE_DURATION = 0.25; // 250ms per tone
-const PILOT_DURATION = 0.3; // 300ms for pilot
+const PILOT_FREQ = 500;
+const TONE_DURATION = 0.15; // 150ms per tone
+const PILOT_DURATION = 0.2; // 200ms for pilot
 
 function playTone(ctx: AudioContext, freq: number, startTime: number, duration: number) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
   gain.connect(ctx.destination);
+  osc.type = 'triangle';
   osc.frequency.value = freq;
   gain.gain.setValueAtTime(0.3, startTime);
   gain.gain.setValueAtTime(0.3, startTime + duration - 0.02);
@@ -104,8 +105,8 @@ export async function listenForToken(
     if (stopped) return;
     analyser.getByteFrequencyData(dataArray);
 
-    const lo = hzToIndex(16500);
-    const hi = Math.min(hzToIndex(20500), bufLen - 1);
+    const lo = hzToIndex(400);
+    const hi = Math.min(hzToIndex(4200), bufLen - 1);
 
     let maxVal = 0;
     let maxIdx = 0;

@@ -5,8 +5,6 @@ import { createPet } from '../api';
 export default function SetupScreen() {
   const { setPet, setScreen } = useApp();
   const [name, setName] = useState('');
-  const [personality, setPersonality] = useState('');
-  const [tone, setTone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -15,7 +13,7 @@ export default function SetupScreen() {
     setError('');
     setLoading(true);
     try {
-      const pet = await createPet({ name, personality, tone });
+      const pet = await createPet({ name, personality: '元気で友好的', tone: '自然体でカジュアル' });
       setPet(pet);
       setScreen('home');
     } catch (err) {
@@ -49,36 +47,6 @@ export default function SetupScreen() {
               required
               placeholder="例：ポチ"
               className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              性格・特徴
-            </label>
-            <textarea
-              value={personality}
-              onChange={(e) => setPersonality(e.target.value)}
-              maxLength={200}
-              required
-              rows={3}
-              placeholder="例：好奇心旺盛で探検家みたい。新しいことが好き"
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              話し方・口調
-            </label>
-            <textarea
-              value={tone}
-              onChange={(e) => setTone(e.target.value)}
-              maxLength={200}
-              required
-              rows={2}
-              placeholder="例：やわらかく短文。断定しない、のんびり系"
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none"
             />
           </div>
 

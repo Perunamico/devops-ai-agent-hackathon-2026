@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import QRCode from 'qrcode.react';
+import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { useApp } from '../App';
 import { issueToken, joinExchange, approveExchange, getAnalysis } from '../api';
 import { playToken, listenForToken, type StopListening } from '../audio';
@@ -25,6 +25,7 @@ export default function ExchangeScreen() {
   const [sessionId, setLocalSessionId] = useState<string | null>(null);
   const stopListeningRef = useRef<StopListening | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const playIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // カウントダウンタイマー
   useEffect(() => {
@@ -64,6 +65,10 @@ export default function ExchangeScreen() {
   function cleanup() {
     stopListeningRef.current?.();
     stopListeningRef.current = null;
+    if (playIntervalRef.current) {
+      clearInterval(playIntervalRef.current);
+      playIntervalRef.current = null;
+    }
   }
 
   async function startSearch() {
@@ -94,8 +99,17 @@ export default function ExchangeScreen() {
 
     setStep('searching');
 
-    // 自分のトークンを鳴き声で送信
+    // 自分のトークンを鳴き声で送信（初回）
     playToken(data.sound_frequencies).catch(() => {});
+    // 4秒毎に最大3回追加再生（計4回）
+    let playCount = 0;
+    playIntervalRef.current = setInterval(() => {
+      playToken(data.sound_frequencies).catch(() => {});
+      if (++playCount >= 3) {
+        clearInterval(playIntervalRef.current!);
+        playIntervalRef.current = null;
+      }
+    }, 4000);
 
     // 相手の鳴き声を聞く
     const stop = await listenForToken(

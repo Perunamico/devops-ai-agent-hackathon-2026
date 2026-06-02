@@ -1,174 +1,208 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
-import { submitInput, getPublicMemory, getReviewItems } from '../api';
-import type { PublicMemoryResponse, MemoryClassifyResult } from '../types';
+import { submitInput, getReviewItems } from '../api';
+import type { MemoryClassifyResult } from '../types';
 
-const INPUT_TYPES = [
-  { value: 'chat' as const, label: '💬 チャット' },
-  { value: 'diary' as const, label: '📓 日記' },
-  { value: 'interest_tag' as const, label: '🏷️ 興味タグ' },
-];
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+  interface SpeechRecognition extends EventTarget {
+    lang: string;
+    continuous: boolean;
+    interimResults: boolean;
+    onresult: ((event: SpeechRecognitionEvent) => void) | null;
+    onend: (() => void) | null;
+    onerror: ((event: Event) => void) | null;
+    start(): void;
+    stop(): void;
+    abort(): void;
+  }
+  interface SpeechRecognitionEvent extends Event {
+    results: SpeechRecognitionResultList;
+  }
+  interface SpeechRecognitionResultList {
+    readonly length: number;
+    item(index: number): SpeechRecognitionResult;
+    [index: number]: SpeechRecognitionResult;
+  }
+  interface SpeechRecognitionResult {
+    readonly length: number;
+    item(index: number): SpeechRecognitionAlternative;
+    [index: number]: SpeechRecognitionAlternative;
+    readonly isFinal: boolean;
+  }
+  interface SpeechRecognitionAlternative {
+    readonly transcript: string;
+    readonly confidence: number;
+  }
+}
 
-const CATEGORY_LABELS: Record<string, { text: string; color: string }> = {
-  public: { text: '公開メモリに追加されました ✓', color: 'bg-green-50 text-green-700' },
-  private: { text: 'プライベートメモリに保存されました', color: 'bg-blue-50 text-blue-700' },
-  blocked: { text: 'ブロックされました（個人情報など）', color: 'bg-red-50 text-red-700' },
-  review_required: { text: '確認が必要です。レビュー画面を確認してください', color: 'bg-amber-50 text-amber-700' },
-};
+const PET_EMOJIS = ['🐱', '🐶', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁'];
+
+function getPetEmoji(name: string): string {
+  const idx = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % PET_EMOJIS.length;
+  return PET_EMOJIS[idx];
+}
+
+function buildPetReply(result: MemoryClassifyResult, petName: string): string {
+  switch (result.category) {
+    case 'public':
+      if (result.interests.length > 0) {
+        return `わん！「${result.interests[0]}」のこと、みんなに教えていいよ！`;
+      }
+      return `わん！それ、素敵な話だね！みんなに教えてあげる！`;
+    case 'private':
+      return `うん...${petName}だけのひみつにしておくね。`;
+    case 'blocked':
+      return `それはないしょにしとくね！大切なことだから守るよ。`;
+    case 'review_required':
+      return `んー、これって共有してもいいかな？確認画面で教えてね！`;
+    default:
+      return `うん、わかった！`;
+  }
+}
 
 export default function HomeScreen() {
   const { pet, setScreen } = useApp();
-  const [inputType, setInputType] = useState<'chat' | 'diary' | 'interest_tag'>('chat');
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [toast, setToast] = useState<MemoryClassifyResult | null>(null);
-  const [memory, setMemory] = useState<PublicMemoryResponse | null>(null);
+  const [petBubble, setPetBubble] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  const petEmoji = pet ? getPetEmoji(pet.name) : '🐾';
 
   useEffect(() => {
-    getPublicMemory().then(setMemory).catch(() => {});
     getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
   }, []);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!content.trim()) return;
+  async function handleSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!content.trim() || submitting) return;
     setSubmitting(true);
     try {
-      const result = await submitInput({ input_type: inputType, content });
-      setToast(result);
+      const result = await submitInput({ input_type: 'chat', content });
+      setPetBubble(buildPetReply(result, pet?.name ?? 'ペット'));
       setContent('');
-      // メモリを再取得
-      if (result.category === 'public' || result.category === 'review_required') {
-        getPublicMemory().then(setMemory).catch(() => {});
+      if (result.category === 'review_required') {
         getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
       }
-      setTimeout(() => setToast(null), 4000);
     } catch {
-      // ignore
+      setPetBubble('うまく聞き取れなかった...もう一度話しかけて！');
     } finally {
       setSubmitting(false);
     }
   }
 
-  return (
-    <div className="px-4 pt-6 pb-2 space-y-5">
-      {/* ペット情報ヘッダー */}
-      <div className="flex items-center gap-3 bg-violet-50 rounded-2xl px-4 py-3">
-        <span className="text-4xl">🐾</span>
-        <div>
-          <p className="font-bold text-gray-900 text-lg">{pet?.name ?? 'ペット'}</p>
-          <p className="text-xs text-gray-500 line-clamp-1">{pet?.personality}</p>
-        </div>
-      </div>
+  function toggleListening() {
+    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if (!SR) return;
 
-      {/* 要確認バッジ */}
+    if (listening) {
+      recognitionRef.current?.abort();
+      setListening(false);
+      return;
+    }
+
+    const recog = new SR();
+    recog.lang = 'ja-JP';
+    recog.continuous = false;
+    recog.interimResults = false;
+    recog.onresult = (e: SpeechRecognitionEvent) => {
+      const transcript = e.results[0][0].transcript;
+      setContent((prev) => prev + transcript);
+      setListening(false);
+    };
+    recog.onend = () => setListening(false);
+    recog.onerror = () => setListening(false);
+    recognitionRef.current = recog;
+    recog.start();
+    setListening(true);
+  }
+
+  const hasSpeechAPI = !!(
+    typeof window !== 'undefined' &&
+    (window.SpeechRecognition || window.webkitSpeechRecognition)
+  );
+
+  return (
+    <div className="flex flex-col min-h-svh pt-14">
+      {/* レビューバナー */}
       {reviewCount > 0 && (
         <button
           onClick={() => setScreen('review')}
-          className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-amber-800 text-left flex items-center justify-between"
+          className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-800 flex items-center justify-between"
         >
           <span>🔔 確認が必要な記憶が {reviewCount} 件あります</span>
           <span className="text-amber-500">→</span>
         </button>
       )}
 
-      {/* 入力フォーム */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-        <p className="text-sm font-medium text-gray-700 mb-3">ペットに話しかける</p>
+      {/* ペットクローズアップゾーン */}
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-8">
+        {/* 吹き出し */}
+        {petBubble ? (
+          <div className="relative bg-violet-50 border border-violet-200 rounded-2xl rounded-bl-sm px-5 py-3 max-w-xs text-sm text-gray-800 shadow-sm">
+            {petBubble}
+            <div className="absolute -bottom-2 left-4 w-4 h-4 bg-violet-50 border-r border-b border-violet-200 rotate-45" />
+          </div>
+        ) : (
+          <div className="relative bg-gray-50 border border-gray-200 rounded-2xl rounded-bl-sm px-5 py-3 max-w-xs text-sm text-gray-500 shadow-sm">
+            何か話しかけてみて！
+            <div className="absolute -bottom-2 left-4 w-4 h-4 bg-gray-50 border-r border-b border-gray-200 rotate-45" />
+          </div>
+        )}
 
-        {/* 入力タイプ切り替え */}
-        <div className="flex gap-2 mb-3">
-          {INPUT_TYPES.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => setInputType(t.value)}
-              className={`flex-1 text-xs py-1.5 rounded-lg border transition-colors
-                ${inputType === t.value
-                  ? 'bg-violet-100 border-violet-300 text-violet-700 font-medium'
-                  : 'border-gray-200 text-gray-500'}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {/* ペット絵文字 */}
+        <span
+          className="select-none"
+          style={{ fontSize: '9rem', lineHeight: 1 }}
+        >
+          {petEmoji}
+        </span>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        {/* ペット名 */}
+        <p className="text-lg font-bold text-gray-700">{pet?.name ?? 'ペット'}</p>
+      </div>
+
+      {/* 入力エリア */}
+      <div className="px-4 pb-6 space-y-3">
+        <div className="flex gap-2 items-end">
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            maxLength={2000}
-            required
-            rows={3}
-            placeholder={
-              inputType === 'chat' ? '最近カフェで作業するのにはまってる...' :
-              inputType === 'diary' ? '今日は〇〇をして楽しかった...' :
-              '読書 / コーヒー / 旅行'
-            }
-            className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
+            rows={2}
+            placeholder="ペットに話しかける..."
+            className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
           />
-          <button
-            type="submit"
-            disabled={submitting || !content.trim()}
-            className="w-full bg-violet-600 text-white rounded-xl py-2.5 text-sm font-semibold
-              hover:bg-violet-700 disabled:opacity-40 transition-colors"
-          >
-            {submitting ? '分析中...' : '送る'}
-          </button>
-        </form>
-
-        {/* トースト */}
-        {toast && (
-          <div className={`mt-3 rounded-lg px-3 py-2 text-xs ${CATEGORY_LABELS[toast.category]?.color}`}>
-            {CATEGORY_LABELS[toast.category]?.text}
-            {toast.interests.length > 0 && (
-              <div className="mt-1 flex flex-wrap gap-1">
-                {toast.interests.map((i) => (
-                  <span key={i} className="bg-white/60 rounded px-1.5 py-0.5">{i}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          {hasSpeechAPI && (
+            <button
+              onClick={toggleListening}
+              type="button"
+              className={`w-11 h-11 rounded-full flex items-center justify-center text-xl transition-colors flex-shrink-0
+                ${listening ? 'bg-red-100 text-red-500 animate-pulse' : 'bg-violet-100 text-violet-600'}`}
+            >
+              🎤
+            </button>
+          )}
+        </div>
+        <button
+          onClick={handleSubmit}
+          disabled={submitting || !content.trim()}
+          className="w-full bg-violet-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-violet-700 disabled:opacity-40 transition-colors"
+        >
+          {submitting ? '考え中...' : '話しかける'}
+        </button>
       </div>
-
-      {/* 公開メモリ */}
-      <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
-        <p className="text-sm font-medium text-gray-700 mb-3">公開プロフィール</p>
-
-        {memory?.safe_topic_tags.length ? (
-          <div className="flex flex-wrap gap-2 mb-3">
-            {memory.safe_topic_tags.map((tag) => (
-              <span key={tag} className="bg-violet-100 text-violet-700 text-xs rounded-full px-3 py-1">
-                {tag}
-              </span>
-            ))}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-400 mb-2">まだ公開情報がありません</p>
-        )}
-
-        {memory?.safe_summaries.map((s, i) => (
-          <p key={i} className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 mb-1.5">{s}</p>
-        ))}
-
-        {memory?.public_conversation_hooks.length ? (
-          <div className="mt-2">
-            <p className="text-xs text-gray-400 mb-1">会話のきっかけ</p>
-            {memory.public_conversation_hooks.map((h, i) => (
-              <p key={i} className="text-xs text-gray-600 italic">💬 {h}</p>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      {/* 交換ボタン */}
-      <button
-        onClick={() => setScreen('exchange')}
-        className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl py-4 font-bold text-base shadow-md hover:shadow-lg transition-all"
-      >
-        🐾 近くのペットを探す
-      </button>
     </div>
   );
 }

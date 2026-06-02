@@ -42,19 +42,19 @@ const NAV_ITEMS: { screen: Screen; label: string; icon: string }[] = [
   { screen: 'report', label: 'レポート', icon: '📄' },
 ];
 
-function BottomNav() {
+function TopNav() {
   const { screen, setScreen } = useApp();
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-50 max-w-md mx-auto">
+    <nav className="fixed top-0 left-0 right-0 bg-white/90 backdrop-blur border-b border-gray-100 flex z-50 max-w-md mx-auto h-14">
       {NAV_ITEMS.map((item) => (
         <button
           key={item.screen}
           onClick={() => setScreen(item.screen)}
-          className={`flex-1 py-3 flex flex-col items-center gap-0.5 text-xs transition-colors
+          className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors
             ${screen === item.screen ? 'text-violet-600 font-semibold' : 'text-gray-400'}`}
         >
-          <span className="text-lg leading-none">{item.icon}</span>
-          <span>{item.label}</span>
+          <span className="text-xl leading-none">{item.icon}</span>
+          <span className="text-[10px]">{item.label}</span>
         </button>
       ))}
     </nav>
@@ -88,10 +88,10 @@ export default function App() {
   return (
     <AppContext.Provider value={ctx}>
       <div className="max-w-md mx-auto min-h-svh relative bg-white shadow-sm">
-        <div className={screen !== 'setup' ? 'pb-16' : ''}>
+        {screen !== 'setup' && <TopNav />}
+        <div className={screen !== 'setup' ? 'pt-14' : ''}>
           {renderScreen()}
         </div>
-        {screen !== 'setup' && <BottomNav />}
       </div>
     </AppContext.Provider>
   );

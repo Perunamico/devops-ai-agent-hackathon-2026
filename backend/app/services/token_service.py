@@ -6,8 +6,8 @@ from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
-_FREQ_BASE = 17000
-_FREQ_STEP = 200  # 16 steps → 17000 to 20000 Hz
+_FREQ_BASE = 700
+_FREQ_STEP = 200  # 16 steps → 700 to 3700 Hz
 
 
 class TokenService:
