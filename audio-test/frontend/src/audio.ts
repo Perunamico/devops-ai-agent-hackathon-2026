@@ -5,7 +5,8 @@
 
 const FREQ_BASE = 700;
 const FREQ_STEP = 200;
-const PILOT_FREQ = 500;
+const START_FREQ = 500;   // 開始マーカー（データ範囲700Hz より下）
+const END_FREQ = 4100;    // 終了マーカー（データ範囲3700Hz より上）
 const TONE_DURATION = 0.15; // 150ms per tone
 const PILOT_DURATION = 0.2; // 200ms for pilot
 
@@ -27,7 +28,7 @@ export async function playToken(frequencies: number[]): Promise<void> {
   const ctx = new AudioContext();
   let t = ctx.currentTime + 0.05;
 
-  playTone(ctx, PILOT_FREQ, t, PILOT_DURATION);
+  playTone(ctx, START_FREQ, t, PILOT_DURATION);
   t += PILOT_DURATION;
 
   for (const freq of frequencies) {
@@ -35,7 +36,7 @@ export async function playToken(frequencies: number[]): Promise<void> {
     t += TONE_DURATION;
   }
 
-  playTone(ctx, PILOT_FREQ, t, PILOT_DURATION);
+  playTone(ctx, END_FREQ, t, PILOT_DURATION);
   t += PILOT_DURATION;
 
   await new Promise<void>((resolve) => setTimeout(resolve, (t - ctx.currentTime) * 1000 + 100));
@@ -43,7 +44,7 @@ export async function playToken(frequencies: number[]): Promise<void> {
 }
 
 function snapToNearest(hz: number): number {
-  const candidates = [PILOT_FREQ];
+  const candidates = [START_FREQ, END_FREQ];
   for (let n = 0; n <= 15; n++) candidates.push(FREQ_BASE + n * FREQ_STEP);
   return candidates.reduce((prev, curr) =>
     Math.abs(curr - hz) < Math.abs(prev - hz) ? curr : prev
@@ -69,7 +70,9 @@ export type DebugInfo = {
   volume: number;      // 0-255
   rawHz: number;       // FFTピーク周波数
   snappedHz: number;   // グリッドスナップ後
-  recording: boolean;  // パイロット受信後の収録中フラグ
+  isStart: boolean;    // START_FREQ(500Hz) かどうか
+  isEnd: boolean;      // END_FREQ(4100Hz) かどうか
+  recording: boolean;  // START受信後の収録中フラグ
   captured: number;    // 収録済みトーン数
 };
 
@@ -129,23 +132,23 @@ export async function listenForToken(
     if (maxVal > 60) {
       const hz = indexToHz(maxIdx);
       const snapped = snapToNearest(hz);
-      onDebug?.({ volume: maxVal, rawHz: Math.round(hz), snappedHz: snapped, recording, captured: detected.length });
+      onDebug?.({ volume: maxVal, rawHz: Math.round(hz), snappedHz: snapped, isStart: snapped === START_FREQ, isEnd: snapped === END_FREQ, recording, captured: detected.length });
 
       if (snapped !== lastSnapped) {
         lastSnapped = snapped;
 
-        if (snapped === PILOT_FREQ) {
-          if (!recording) {
-            recording = true;
-            detected = [];
-          } else {
-            if (detected.length === 16) {
-              const token = decodeFrequencies(detected);
-              if (token) onToken(token);
-            }
-            recording = false;
-            detected = [];
+        if (snapped === START_FREQ) {
+          // 開始マーカー: 収録開始（END が来るまで待つ）
+          recording = true;
+          detected = [];
+        } else if (snapped === END_FREQ) {
+          // 終了マーカー: 16トーン揃っていればデコード
+          if (recording && detected.length === 16) {
+            const token = decodeFrequencies(detected);
+            if (token) onToken(token);
           }
+          recording = false;
+          detected = [];
         } else if (recording) {
           detected.push(snapped);
           if (detected.length > 20) {

@@ -19,6 +19,7 @@ export default function App() {
   const [history, setHistory] = useState<{ token: string; match: boolean }[]>([]);
   const [debug, setDebug] = useState<DebugInfo | null>(null);
   const stopRef = useRef<StopListening | null>(null);
+  const lockedRef = useRef(false);
 
   async function handleIssueAndPlay() {
     setError(null);
@@ -44,8 +45,11 @@ export default function App() {
       setDebug(null);
     } else {
       setError(null);
+      lockedRef.current = false;
       const stop = await listenForToken(
         (token) => {
+          if (lockedRef.current) return;
+          lockedRef.current = true;
           setRecognized(token);
           setFlash(true);
           setTimeout(() => setFlash(false), 600);
@@ -132,15 +136,25 @@ export default function App() {
             {listenStatus === 'listening' ? '● 聴取中...' : listenStatus === 'error' ? '× エラー' : '○ 待機中'}
           </div>
 
-          <button
-            style={{
-              ...styles.btn,
-              ...(listenStatus === 'listening' ? styles.btnDanger : styles.btnSuccess),
-            }}
-            onClick={handleToggleListen}
-          >
-            {listenStatus === 'listening' ? '⏹ 聴取停止' : '🎙 聴取開始'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              style={{
+                ...styles.btn,
+                ...(listenStatus === 'listening' ? styles.btnDanger : styles.btnSuccess),
+              }}
+              onClick={handleToggleListen}
+            >
+              {listenStatus === 'listening' ? '⏹ 聴取停止' : '🎙 聴取開始'}
+            </button>
+            {recognized && listenStatus === 'listening' && (
+              <button
+                style={{ ...styles.btn, background: '#6c757d', color: '#fff' }}
+                onClick={() => { lockedRef.current = false; setRecognized(null); }}
+              >
+                🔄 次を認識
+              </button>
+            )}
+          </div>
 
           {history.length > 0 && (
             <div style={styles.history}>
@@ -190,10 +204,14 @@ export default function App() {
                 <span style={styles.debugLabel}>スナップHz</span>
                 <span style={{
                   ...styles.debugVal,
-                  color: debug.snappedHz === 500 ? '#e67e22' : '#0d6efd',
-                  fontWeight: 700,
+                  color: debug.isStart ? '#e67e22' : debug.isEnd ? '#e74c3c' : '#0d6efd',
+                  fontWeight: debug.isStart || debug.isEnd ? 700 : 400,
                 }}>
-                  {debug.snappedHz === 500 ? `${debug.snappedHz} Hz ← PILOT` : `${debug.snappedHz} Hz`}
+                  {debug.isStart
+                    ? `${debug.snappedHz} Hz ← START`
+                    : debug.isEnd
+                    ? `${debug.snappedHz} Hz ← END`
+                    : `${debug.snappedHz} Hz`}
                 </span>
               </div>
 
