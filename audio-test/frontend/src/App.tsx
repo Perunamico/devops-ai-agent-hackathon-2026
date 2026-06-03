@@ -18,6 +18,7 @@ export default function App() {
   const [flash, setFlash] = useState(false);
   const [history, setHistory] = useState<{ token: string; match: boolean }[]>([]);
   const [debug, setDebug] = useState<DebugInfo | null>(null);
+  const [partial, setPartial] = useState<{ text: string; captured: number } | null>(null);
   const stopRef = useRef<StopListening | null>(null);
   const lockedRef = useRef(false);
 
@@ -43,6 +44,7 @@ export default function App() {
       stopRef.current = null;
       setListenStatus('idle');
       setDebug(null);
+      setPartial(null);
     } else {
       setError(null);
       lockedRef.current = false;
@@ -50,6 +52,7 @@ export default function App() {
         (token) => {
           if (lockedRef.current) return;
           lockedRef.current = true;
+          setPartial(null);
           setRecognized(token);
           setFlash(true);
           setTimeout(() => setFlash(false), 600);
@@ -62,7 +65,10 @@ export default function App() {
           setError(msg);
           setListenStatus('error');
         },
-        (info) => setDebug(info)
+        (info) => setDebug(info),
+        (text, captured) => {
+          if (!lockedRef.current) setPartial({ text, captured });
+        }
       );
       stopRef.current = stop;
       setListenStatus('listening');
@@ -132,6 +138,13 @@ export default function App() {
             {recognized ?? <span style={{ color: '#bbb' }}>未認識</span>}
           </div>
 
+          {partial && !recognized && (
+            <div style={styles.partialBox}>
+              <div style={styles.partialLabel}>不完全 ({partial.captured}/16 トーン)</div>
+              <div style={styles.partialToken}>{partial.text || '—'}</div>
+            </div>
+          )}
+
           <div style={{ ...styles.statusBadge, color: listenStatus === 'listening' ? '#28a745' : '#6c757d' }}>
             {listenStatus === 'listening' ? '● 聴取中...' : listenStatus === 'error' ? '× エラー' : '○ 待機中'}
           </div>
@@ -149,7 +162,7 @@ export default function App() {
             {recognized && listenStatus === 'listening' && (
               <button
                 style={{ ...styles.btn, background: '#6c757d', color: '#fff' }}
-                onClick={() => { lockedRef.current = false; setRecognized(null); }}
+                onClick={() => { lockedRef.current = false; setRecognized(null); setPartial(null); }}
               >
                 🔄 次を認識
               </button>
@@ -389,6 +402,24 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f8f9fa',
     padding: '1px 5px',
     borderRadius: 3,
+  },
+  partialBox: {
+    background: '#fff3cd',
+    border: '1px solid #ffc107',
+    borderRadius: 6,
+    padding: '8px 12px',
+  },
+  partialLabel: {
+    fontSize: 11,
+    color: '#856404',
+    marginBottom: 4,
+  },
+  partialToken: {
+    fontSize: 22,
+    letterSpacing: 4,
+    fontWeight: 700,
+    color: '#856404',
+    wordBreak: 'break-all' as const,
   },
   debugPanel: {
     marginTop: 20,

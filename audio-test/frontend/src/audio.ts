@@ -1,7 +1,7 @@
 // バックエンドのtoken_service.pyと同じエンコード仕様
 // FREQ_BASE = 700, FREQ_STEP = 200（16ステップ）
 // トークン8バイト → 16周波数（各バイトを上位/下位ニブルに分割）
-// パイロット同期トーン：500 Hz
+// START_FREQ: 開始マーカー / END_FREQ: 終了マーカー
 
 const FREQ_BASE = 700;
 const FREQ_STEP = 200;
@@ -9,6 +9,10 @@ const START_FREQ = 500;   // 開始マーカー（データ範囲700Hz より下
 const END_FREQ = 4100;    // 終了マーカー（データ範囲3700Hz より上）
 const TONE_DURATION = 0.15; // 150ms per tone
 const PILOT_DURATION = 0.2; // 200ms for pilot
+
+// 連続する同一周波数トーンを別トーンとして扱うための閾値（ms）
+// TONE_DURATION(150ms)より僅かに大きくして、1トーン内での誤二重カウントを防ぐ
+const SAME_FREQ_REPEAT_MS = 155;
 
 function playTone(ctx: AudioContext, freq: number, startTime: number, duration: number) {
   const osc = ctx.createOscillator();
@@ -60,7 +64,19 @@ function decodeFrequencies(freqs: number[]): string | null {
     if (high < 0 || high > 15 || low < 0 || low > 15) return null;
     bytes.push((high << 4) | low);
   }
-  // base64urlエンコードされたASCII文字列として復元
+  return bytes.map((b) => String.fromCharCode(b)).join('');
+}
+
+// 不完全なトーン列でも可能な限りデコードする（END到達時に使用）
+function decodePartial(freqs: number[]): string {
+  const bytes: number[] = [];
+  for (let i = 0; i + 1 < freqs.length; i += 2) {
+    const high = Math.round((freqs[i] - FREQ_BASE) / FREQ_STEP);
+    const low = Math.round((freqs[i + 1] - FREQ_BASE) / FREQ_STEP);
+    if (high >= 0 && high <= 15 && low >= 0 && low <= 15) {
+      bytes.push((high << 4) | low);
+    }
+  }
   return bytes.map((b) => String.fromCharCode(b)).join('');
 }
 
@@ -79,7 +95,8 @@ export type DebugInfo = {
 export async function listenForToken(
   onToken: (token: string) => void,
   onError: (msg: string) => void,
-  onDebug?: (info: DebugInfo) => void
+  onDebug?: (info: DebugInfo) => void,
+  onPartial?: (partial: string, captured: number) => void
 ): Promise<StopListening> {
   let stream: MediaStream;
   try {
@@ -109,9 +126,20 @@ export async function listenForToken(
 
   let detected: number[] = [];
   let lastSnapped = 0;
+  let lastToneAddedAt = 0; // 最後にデータトーンを追加した時刻(ms) — 同一周波数連続対策
   let recording = false;
   let animId = 0;
   let stopped = false;
+
+  function addDataTone(snapped: number, now: number) {
+    detected.push(snapped);
+    lastToneAddedAt = now;
+    if (detected.length > 20) {
+      // オーバーフロー：リセット
+      recording = false;
+      detected = [];
+    }
+  }
 
   function loop() {
     if (stopped) return;
@@ -132,31 +160,52 @@ export async function listenForToken(
     if (maxVal > 60) {
       const hz = indexToHz(maxIdx);
       const snapped = snapToNearest(hz);
-      onDebug?.({ volume: maxVal, rawHz: Math.round(hz), snappedHz: snapped, isStart: snapped === START_FREQ, isEnd: snapped === END_FREQ, recording, captured: detected.length });
+      const now = performance.now();
 
-      if (snapped !== lastSnapped) {
+      onDebug?.({
+        volume: maxVal,
+        rawHz: Math.round(hz),
+        snappedHz: snapped,
+        isStart: snapped === START_FREQ,
+        isEnd: snapped === END_FREQ,
+        recording,
+        captured: detected.length,
+      });
+
+      const freqChanged = snapped !== lastSnapped;
+      // 同一周波数でも SAME_FREQ_REPEAT_MS 以上経過したら別トーンとして扱う
+      const sameFreqRepeat =
+        !freqChanged &&
+        recording &&
+        snapped !== START_FREQ &&
+        snapped !== END_FREQ &&
+        now - lastToneAddedAt >= SAME_FREQ_REPEAT_MS;
+
+      if (freqChanged) {
         lastSnapped = snapped;
 
         if (snapped === START_FREQ) {
-          // 開始マーカー: 収録開始（END が来るまで待つ）
           recording = true;
           detected = [];
+          lastToneAddedAt = 0;
         } else if (snapped === END_FREQ) {
-          // 終了マーカー: 16トーン揃っていればデコード
-          if (recording && detected.length === 16) {
-            const token = decodeFrequencies(detected);
-            if (token) onToken(token);
+          if (recording) {
+            if (detected.length === 16) {
+              const token = decodeFrequencies(detected);
+              if (token) onToken(token);
+            } else {
+              // 不完全でも呼び出し元に渡す
+              onPartial?.(decodePartial(detected), detected.length);
+            }
           }
           recording = false;
           detected = [];
         } else if (recording) {
-          detected.push(snapped);
-          if (detected.length > 20) {
-            // オーバーフロー：リセット
-            recording = false;
-            detected = [];
-          }
+          addDataTone(snapped, now);
         }
+      } else if (sameFreqRepeat) {
+        // 同一周波数が継続 → 連続する同一トーンとしてカウント
+        addDataTone(snapped, now);
       }
     }
 
