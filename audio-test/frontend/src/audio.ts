@@ -65,9 +65,18 @@ function decodeFrequencies(freqs: number[]): string | null {
 
 export type StopListening = () => void;
 
+export type DebugInfo = {
+  volume: number;      // 0-255
+  rawHz: number;       // FFTピーク周波数
+  snappedHz: number;   // グリッドスナップ後
+  recording: boolean;  // パイロット受信後の収録中フラグ
+  captured: number;    // 収録済みトーン数
+};
+
 export async function listenForToken(
   onToken: (token: string) => void,
-  onError: (msg: string) => void
+  onError: (msg: string) => void,
+  onDebug?: (info: DebugInfo) => void
 ): Promise<StopListening> {
   let stream: MediaStream;
   try {
@@ -120,6 +129,7 @@ export async function listenForToken(
     if (maxVal > 60) {
       const hz = indexToHz(maxIdx);
       const snapped = snapToNearest(hz);
+      onDebug?.({ volume: maxVal, rawHz: Math.round(hz), snappedHz: snapped, recording, captured: detected.length });
 
       if (snapped !== lastSnapped) {
         lastSnapped = snapped;

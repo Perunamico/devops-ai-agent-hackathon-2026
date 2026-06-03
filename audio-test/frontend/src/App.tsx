@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { playToken, listenForToken, StopListening } from './audio';
+import { playToken, listenForToken, StopListening, DebugInfo } from './audio';
 
 type TokenData = {
   token: string;
@@ -17,6 +17,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
   const [history, setHistory] = useState<{ token: string; match: boolean }[]>([]);
+  const [debug, setDebug] = useState<DebugInfo | null>(null);
   const stopRef = useRef<StopListening | null>(null);
 
   async function handleIssueAndPlay() {
@@ -40,6 +41,7 @@ export default function App() {
       stopRef.current?.();
       stopRef.current = null;
       setListenStatus('idle');
+      setDebug(null);
     } else {
       setError(null);
       const stop = await listenForToken(
@@ -55,7 +57,8 @@ export default function App() {
         (msg) => {
           setError(msg);
           setListenStatus('error');
-        }
+        },
+        (info) => setDebug(info)
       );
       stopRef.current = stop;
       setListenStatus('listening');
@@ -154,6 +157,76 @@ export default function App() {
           )}
         </div>
       </div>
+
+      {/* ── デバッグパネル ── */}
+      {listenStatus === 'listening' && (
+        <div style={styles.debugPanel}>
+          <div style={styles.debugTitle}>リアルタイム音声モニタ</div>
+          {debug ? (
+            <div style={styles.debugGrid}>
+              {/* 音量バー */}
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>音量</span>
+                <div style={styles.barTrack}>
+                  <div
+                    style={{
+                      ...styles.barFill,
+                      width: `${(debug.volume / 255) * 100}%`,
+                      background: debug.volume > 200 ? '#dc3545' : debug.volume > 100 ? '#28a745' : '#0d6efd',
+                    }}
+                  />
+                </div>
+                <span style={styles.debugVal}>{debug.volume}</span>
+              </div>
+
+              {/* 生周波数 */}
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>生Hz</span>
+                <span style={styles.debugVal}>{debug.rawHz} Hz</span>
+              </div>
+
+              {/* スナップ後周波数 */}
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>スナップHz</span>
+                <span style={{
+                  ...styles.debugVal,
+                  color: debug.snappedHz === 500 ? '#e67e22' : '#0d6efd',
+                  fontWeight: 700,
+                }}>
+                  {debug.snappedHz === 500 ? `${debug.snappedHz} Hz ← PILOT` : `${debug.snappedHz} Hz`}
+                </span>
+              </div>
+
+              {/* 収録状態 */}
+              <div style={styles.debugRow}>
+                <span style={styles.debugLabel}>収録状態</span>
+                <span style={{
+                  ...styles.debugVal,
+                  color: debug.recording ? '#28a745' : '#6c757d',
+                  fontWeight: 700,
+                }}>
+                  {debug.recording
+                    ? `● 収録中 ${debug.captured}/16 トーン`
+                    : '○ 待機中（パイロット待ち）'}
+                </span>
+              </div>
+
+              {/* 収録バー */}
+              {debug.recording && (
+                <div style={styles.debugRow}>
+                  <span style={styles.debugLabel}>収録数</span>
+                  <div style={styles.barTrack}>
+                    <div style={{ ...styles.barFill, width: `${(debug.captured / 16) * 100}%`, background: '#28a745' }} />
+                  </div>
+                  <span style={styles.debugVal}>{debug.captured}/16</span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ color: '#adb5bd', fontSize: 13 }}>音声入力なし（閾値60未満）</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -298,5 +371,53 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#f8f9fa',
     padding: '1px 5px',
     borderRadius: 3,
+  },
+  debugPanel: {
+    marginTop: 20,
+    border: '2px solid #dee2e6',
+    borderRadius: 10,
+    padding: 20,
+    background: '#1e1e2e',
+    color: '#cdd6f4',
+  },
+  debugTitle: {
+    fontSize: 12,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 1.5,
+    color: '#6c7086',
+    marginBottom: 12,
+  },
+  debugGrid: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 10,
+  },
+  debugRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+  },
+  debugLabel: {
+    width: 90,
+    fontSize: 12,
+    color: '#6c7086',
+    flexShrink: 0,
+  },
+  debugVal: {
+    fontSize: 14,
+    fontFamily: "'Courier New', monospace",
+    minWidth: 160,
+  },
+  barTrack: {
+    flex: 1,
+    height: 10,
+    background: '#313244',
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    borderRadius: 5,
+    transition: 'width 0.05s',
   },
 };
