@@ -12,13 +12,14 @@ type ListenStatus = 'idle' | 'listening' | 'error';
 export default function App() {
   const [issued, setIssued] = useState<TokenData | null>(null);
   const [recognized, setRecognized] = useState<string | null>(null);
+  const [recognizedFreqs, setRecognizedFreqs] = useState<number[]>([]);
   const [playing, setPlaying] = useState(false);
   const [listenStatus, setListenStatus] = useState<ListenStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState(false);
   const [history, setHistory] = useState<{ token: string; match: boolean }[]>([]);
   const [debug, setDebug] = useState<DebugInfo | null>(null);
-  const [partial, setPartial] = useState<{ text: string; captured: number } | null>(null);
+  const [partial, setPartial] = useState<{ text: string; captured: number; freqs: number[] } | null>(null);
   const stopRef = useRef<StopListening | null>(null);
   const lockedRef = useRef(false);
 
@@ -49,11 +50,12 @@ export default function App() {
       setError(null);
       lockedRef.current = false;
       const stop = await listenForToken(
-        (token) => {
+        (token, freqs) => {
           if (lockedRef.current) return;
           lockedRef.current = true;
           setPartial(null);
           setRecognized(token);
+          setRecognizedFreqs(freqs);
           setFlash(true);
           setTimeout(() => setFlash(false), 600);
           setHistory((prev) => [
@@ -66,8 +68,8 @@ export default function App() {
           setListenStatus('error');
         },
         (info) => setDebug(info),
-        (text, captured) => {
-          if (!lockedRef.current) setPartial({ text, captured });
+        (text, captured, freqs) => {
+          if (!lockedRef.current) setPartial({ text, captured, freqs });
         }
       );
       stopRef.current = stop;
@@ -138,10 +140,27 @@ export default function App() {
             {recognized ?? <span style={{ color: '#bbb' }}>未認識</span>}
           </div>
 
+          {recognizedFreqs.length > 0 && (
+            <>
+              <div style={styles.freqLabel}>受信周波数列（Hz）</div>
+              <div style={styles.freqGrid}>
+                {recognizedFreqs.map((f, i) => (
+                  <span key={i} style={styles.freqChip}>{f}</span>
+                ))}
+              </div>
+            </>
+          )}
+
           {partial && !recognized && (
             <div style={styles.partialBox}>
               <div style={styles.partialLabel}>不完全 ({partial.captured}/16 トーン)</div>
               <div style={styles.partialToken}>{partial.text || '—'}</div>
+              <div style={styles.freqLabel} >受信周波数列（Hz）</div>
+              <div style={styles.freqGrid}>
+                {partial.freqs.map((f, i) => (
+                  <span key={i} style={styles.freqChip}>{f}</span>
+                ))}
+              </div>
             </div>
           )}
 
@@ -162,7 +181,7 @@ export default function App() {
             {recognized && listenStatus === 'listening' && (
               <button
                 style={{ ...styles.btn, background: '#6c757d', color: '#fff' }}
-                onClick={() => { lockedRef.current = false; setRecognized(null); setPartial(null); }}
+                onClick={() => { lockedRef.current = false; setRecognized(null); setRecognizedFreqs([]); setPartial(null); }}
               >
                 🔄 次を認識
               </button>

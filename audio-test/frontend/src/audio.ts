@@ -92,10 +92,10 @@ export type DebugInfo = {
 };
 
 export async function listenForToken(
-  onToken: (token: string) => void,
+  onToken: (token: string, freqs: number[]) => void,
   onError: (msg: string) => void,
   onDebug?: (info: DebugInfo) => void,
-  onPartial?: (partial: string, captured: number) => void
+  onPartial?: (partial: string, captured: number, freqs: number[]) => void
 ): Promise<StopListening> {
   let stream: MediaStream;
   try {
@@ -169,10 +169,9 @@ export async function listenForToken(
           if (recording) {
             if (detected.length === 16) {
               const token = decodeFrequencies(detected);
-              if (token) onToken(token);
+              if (token) onToken(token, [...detected]);
             } else {
-              // 不完全でも呼び出し元に渡す
-              onPartial?.(decodePartial(detected), detected.length);
+              onPartial?.(decodePartial(detected), detected.length, [...detected]);
             }
           }
           recording = false;
