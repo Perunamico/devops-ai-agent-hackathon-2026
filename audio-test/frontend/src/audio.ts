@@ -178,10 +178,7 @@ export async function listenForToken(
           recording = false;
           detected = [];
         } else if (recording) {
-          // 16トーン到達後は追加しない（ノイズによるオーバーフロー防止）
-          if (detected.length < 16) {
-            detected.push(snapped);
-          }
+          detected.push(snapped);
         }
       }
     }
