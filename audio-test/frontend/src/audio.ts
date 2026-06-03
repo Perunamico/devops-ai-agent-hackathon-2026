@@ -1,0 +1,161 @@
+// バックエンドのtoken_service.pyと同じエンコード仕様
+// FREQ_BASE = 700, FREQ_STEP = 200（16ステップ）
+// トークン8バイト → 16周波数（各バイトを上位/下位ニブルに分割）
+// パイロット同期トーン：500 Hz
+
+const FREQ_BASE = 700;
+const FREQ_STEP = 200;
+const PILOT_FREQ = 500;
+const TONE_DURATION = 0.15; // 150ms per tone
+const PILOT_DURATION = 0.2; // 200ms for pilot
+
+function playTone(ctx: AudioContext, freq: number, startTime: number, duration: number) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.3, startTime);
+  gain.gain.setValueAtTime(0.3, startTime + duration - 0.02);
+  gain.gain.linearRampToValueAtTime(0, startTime + duration);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+export async function playToken(frequencies: number[]): Promise<void> {
+  const ctx = new AudioContext();
+  let t = ctx.currentTime + 0.05;
+
+  playTone(ctx, PILOT_FREQ, t, PILOT_DURATION);
+  t += PILOT_DURATION;
+
+  for (const freq of frequencies) {
+    playTone(ctx, freq, t, TONE_DURATION);
+    t += TONE_DURATION;
+  }
+
+  playTone(ctx, PILOT_FREQ, t, PILOT_DURATION);
+  t += PILOT_DURATION;
+
+  await new Promise<void>((resolve) => setTimeout(resolve, (t - ctx.currentTime) * 1000 + 100));
+  await ctx.close();
+}
+
+function snapToNearest(hz: number): number {
+  const candidates = [PILOT_FREQ];
+  for (let n = 0; n <= 15; n++) candidates.push(FREQ_BASE + n * FREQ_STEP);
+  return candidates.reduce((prev, curr) =>
+    Math.abs(curr - hz) < Math.abs(prev - hz) ? curr : prev
+  );
+}
+
+function decodeFrequencies(freqs: number[]): string | null {
+  if (freqs.length !== 16) return null;
+  const bytes: number[] = [];
+  for (let i = 0; i < 16; i += 2) {
+    const high = Math.round((freqs[i] - FREQ_BASE) / FREQ_STEP);
+    const low = Math.round((freqs[i + 1] - FREQ_BASE) / FREQ_STEP);
+    if (high < 0 || high > 15 || low < 0 || low > 15) return null;
+    bytes.push((high << 4) | low);
+  }
+  // base64urlエンコードされたASCII文字列として復元
+  return bytes.map((b) => String.fromCharCode(b)).join('');
+}
+
+export type StopListening = () => void;
+
+export async function listenForToken(
+  onToken: (token: string) => void,
+  onError: (msg: string) => void
+): Promise<StopListening> {
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch {
+    onError('マイクの許可が必要です');
+    return () => {};
+  }
+
+  const ctx = new AudioContext({ sampleRate: 44100 });
+  const source = ctx.createMediaStreamSource(stream);
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 8192;
+  analyser.smoothingTimeConstant = 0.1;
+  source.connect(analyser);
+
+  const bufLen = analyser.frequencyBinCount;
+  const dataArray = new Uint8Array(bufLen);
+  const sampleRate = ctx.sampleRate;
+
+  function hzToIndex(hz: number) {
+    return Math.round((hz * analyser.fftSize) / sampleRate);
+  }
+  function indexToHz(idx: number) {
+    return (idx * sampleRate) / analyser.fftSize;
+  }
+
+  let detected: number[] = [];
+  let lastSnapped = 0;
+  let recording = false;
+  let animId = 0;
+  let stopped = false;
+
+  function loop() {
+    if (stopped) return;
+    analyser.getByteFrequencyData(dataArray);
+
+    const lo = hzToIndex(400);
+    const hi = Math.min(hzToIndex(4200), bufLen - 1);
+
+    let maxVal = 0;
+    let maxIdx = 0;
+    for (let i = lo; i <= hi; i++) {
+      if (dataArray[i] > maxVal) {
+        maxVal = dataArray[i];
+        maxIdx = i;
+      }
+    }
+
+    if (maxVal > 60) {
+      const hz = indexToHz(maxIdx);
+      const snapped = snapToNearest(hz);
+
+      if (snapped !== lastSnapped) {
+        lastSnapped = snapped;
+
+        if (snapped === PILOT_FREQ) {
+          if (!recording) {
+            recording = true;
+            detected = [];
+          } else {
+            if (detected.length === 16) {
+              const token = decodeFrequencies(detected);
+              if (token) onToken(token);
+            }
+            recording = false;
+            detected = [];
+          }
+        } else if (recording) {
+          detected.push(snapped);
+          if (detected.length > 20) {
+            // オーバーフロー：リセット
+            recording = false;
+            detected = [];
+          }
+        }
+      }
+    }
+
+    animId = requestAnimationFrame(loop);
+  }
+
+  loop();
+
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(animId);
+    stream.getTracks().forEach((t) => t.stop());
+    ctx.close();
+  };
+}
