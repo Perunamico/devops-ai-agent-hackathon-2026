@@ -53,30 +53,19 @@ function snapToNearest(hz: number): number {
 
 function decodeFrequencies(freqs: number[]): string | null {
   if (freqs.length !== 16) return null;
-  const bytes: number[] = [];
-  for (let i = 0; i < 16; i += 2) {
-    const high = Math.round((freqs[i] - FREQ_BASE) / FREQ_STEP);
-    const low = Math.round((freqs[i + 1] - FREQ_BASE) / FREQ_STEP);
-    if (high < 0 || high > 15 || low < 0 || low > 15) return null;
-    bytes.push((high << 4) | low);
-  }
-  return bytes.map((b) => String.fromCharCode(b)).join('');
+  const nibbles = freqs.map((f) => Math.round((f - FREQ_BASE) / FREQ_STEP));
+  if (nibbles.some((n) => n < 0 || n > 15)) return null;
+  return nibbles.map((n) => n.toString(16)).join('');
 }
 
 // 不完全なトーン列でも可能な限りデコードする（END到達時に使用）
-// base64url の印字可能範囲外のバイトは '?' で表示
 function decodePartial(freqs: number[]): string {
-  const chars: string[] = [];
-  for (let i = 0; i + 1 < freqs.length; i += 2) {
-    const high = Math.round((freqs[i] - FREQ_BASE) / FREQ_STEP);
-    const low = Math.round((freqs[i + 1] - FREQ_BASE) / FREQ_STEP);
-    if (high >= 0 && high <= 15 && low >= 0 && low <= 15) {
-      const b = (high << 4) | low;
-      // 印字可能 ASCII (0x20-0x7E) のみそのまま表示、それ以外は '?'
-      chars.push(b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '?');
-    }
-  }
-  return chars.join('');
+  return freqs
+    .map((f) => {
+      const n = Math.round((f - FREQ_BASE) / FREQ_STEP);
+      return n >= 0 && n <= 15 ? n.toString(16) : '?';
+    })
+    .join('');
 }
 
 export type StopListening = () => void;

@@ -7,20 +7,21 @@ _FREQ_STEP = 200  # 16 steps → 700 to 3700 Hz
 
 class TokenService:
     def generate_exchange_token(self) -> tuple[str, datetime]:
-        while True:
-            token = secrets.token_urlsafe(6)
-            freqs = self.encode_token_to_frequencies(token)
-            if not any(freqs[i] == freqs[i + 1] for i in range(len(freqs) - 1)):
-                break
+        # 16ニブルを「前と同じにならない値」から選んで生成 → 隣接重複を構造的に排除
+        prev = -1
+        nibbles: list[int] = []
+        for _ in range(16):
+            pool = [n for n in range(16) if n != prev]
+            n = secrets.choice(pool)
+            nibbles.append(n)
+            prev = n
+
+        # ニブル列をそのまま16文字の16進数トークン文字列にする
+        token = ''.join(f'{n:x}' for n in nibbles)
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=30)
         return token, expires_at
 
     def encode_token_to_frequencies(self, token: str) -> list[int]:
-        token_bytes = token.encode()[:8]
-        freqs = []
-        for b in token_bytes:
-            high = (b >> 4) & 0xF
-            low = b & 0xF
-            freqs.append(_FREQ_BASE + high * _FREQ_STEP)
-            freqs.append(_FREQ_BASE + low * _FREQ_STEP)
-        return freqs
+        # トークンの各16進文字 = ニブル値 → 周波数
+        nibbles = [int(c, 16) for c in token[:16]]
+        return [_FREQ_BASE + n * _FREQ_STEP for n in nibbles]
