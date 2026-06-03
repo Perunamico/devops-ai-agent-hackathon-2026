@@ -7,7 +7,11 @@ _FREQ_STEP = 200  # 16 steps → 700 to 3700 Hz
 
 class TokenService:
     def generate_exchange_token(self) -> tuple[str, datetime]:
-        token = secrets.token_urlsafe(6)
+        while True:
+            token = secrets.token_urlsafe(6)
+            freqs = self.encode_token_to_frequencies(token)
+            if not any(freqs[i] == freqs[i + 1] for i in range(len(freqs) - 1)):
+                break
         expires_at = datetime.now(timezone.utc) + timedelta(seconds=30)
         return token, expires_at
 
