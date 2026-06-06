@@ -143,7 +143,7 @@ export default function HomeScreen() {
     (window.SpeechRecognition || window.webkitSpeechRecognition)
   );
 
-  const bubbleText = petBubble ?? 'おはよう！ 今日は何して過ごす？💙';
+  const bubbleText = petBubble ?? `おはよう！${pet?.name ?? 'ペット'}だよ！`;
 
   return (
     <div className="flex flex-col h-[calc(100dvh-5rem)] bg-white">
