@@ -141,3 +141,11 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Source assets (processed copies live in frontend/public/)
+/icon/
+/movie/
+
+# Python
+backend/.venv/
+**/__pycache__/
