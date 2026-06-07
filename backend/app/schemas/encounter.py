@@ -3,24 +3,38 @@ from pydantic import BaseModel
 
 
 class ExchangeTokenResponse(BaseModel):
-    token: str
+    payload_raw: list[int]
+    token_key: str
     expires_at: str
-    sound_frequencies: list[int]
-    qr_data: str
+    qr_url: str
 
 
-class JoinExchangeRequest(BaseModel):
-    token: str
-    exchange_method: Literal["sound", "qr_fallback", "nfc_tag"]
+class ResolveExchangeRequest(BaseModel):
+    payload_raw: list[int]
 
 
-class JoinExchangeResponse(BaseModel):
+class ResolveStatus(str):
+    pass
+
+
+class ResolveExchangeResponse(BaseModel):
+    status: Literal["matched", "waiting", "expired", "used", "not_found", "self"]
+    session_id: str | None = None
+    pending_id: str | None = None
+
+
+class MatchStatusResponse(BaseModel):
+    status: Literal["waiting", "matched"]
+    session_id: str | None = None
+
+
+class SessionResponse(BaseModel):
     session_id: str
-    status: Literal["waiting", "confirmed"]
-
-
-class ExchangeApproveRequest(BaseModel):
-    approved: bool
+    status: Literal["active", "ended"]
+    speaker_id: str
+    common_message: str | None = None
+    analysis_id: str | None = None
+    ended_by: str | None = None
 
 
 class ReportCard(BaseModel):

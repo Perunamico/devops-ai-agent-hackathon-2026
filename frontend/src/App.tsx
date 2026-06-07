@@ -19,6 +19,8 @@ interface AppCtx {
   setSessionId: (id: string | null) => void;
   analysisId: string | null;
   setAnalysisId: (id: string | null) => void;
+  showExchangeConfirm: boolean;
+  setShowExchangeConfirm: (v: boolean) => void;
 }
 
 export const AppContext = createContext<AppCtx>({
@@ -30,6 +32,8 @@ export const AppContext = createContext<AppCtx>({
   setSessionId: () => {},
   analysisId: null,
   setAnalysisId: () => {},
+  showExchangeConfirm: false,
+  setShowExchangeConfirm: () => {},
 });
 
 export function useApp() {
@@ -44,7 +48,7 @@ const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
 ];
 
 function TopNav() {
-  const { screen, setScreen } = useApp();
+  const { screen, setScreen, setShowExchangeConfirm } = useApp();
 
   if (screen !== 'home') {
     return (
@@ -68,7 +72,11 @@ function TopNav() {
       {NAV_ITEMS.map((item) => (
         <button
           key={item.screen}
-          onClick={() => setScreen(item.screen)}
+          onClick={() => {
+            if (item.screen === 'petexchange') setShowExchangeConfirm(true);
+            else if (item.screen === 'exchange') setScreen('petexchange');
+            else setScreen(item.screen);
+          }}
           className="flex-1 flex flex-col items-center justify-center gap-1 bg-white rounded-2xl transition-all"
         >
           <img src={item.iconImg} className="w-8 h-8 object-contain" alt={item.label} />
@@ -80,17 +88,25 @@ function TopNav() {
 }
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('setup');
+  const hasQrToken = new URLSearchParams(window.location.search).has('exchangeToken');
+  const [screen, setScreen] = useState<Screen>(hasQrToken ? 'exchange' : 'setup');
   const [pet, setPet] = useState<PetResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [showExchangeConfirm, setShowExchangeConfirm] = useState(false);
 
   const ctx: AppCtx = {
     screen, setScreen,
     pet, setPet,
     sessionId, setSessionId,
     analysisId, setAnalysisId,
+    showExchangeConfirm, setShowExchangeConfirm,
   };
+
+  function handleExchangeConfirmYes() {
+    setShowExchangeConfirm(false);
+    setScreen('exchange');
+  }
 
   function renderScreen() {
     switch (screen) {
@@ -111,6 +127,33 @@ export default function App() {
         <div className={screen === 'setup' ? '' : screen === 'home' ? 'pt-20' : 'pt-14'}>
           {renderScreen()}
         </div>
+
+        {/* 交流確認モーダル（ホーム画面からのポップ）*/}
+        {showExchangeConfirm && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40">
+            <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl">
+              <div className="text-center space-y-2">
+                <div className="text-4xl">🐾</div>
+                <h2 className="text-lg font-bold text-gray-900">お相手のペットと交流を開始しますか？</h2>
+                <p className="text-sm text-gray-500">マイクを使って近くのペットを探します</p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleExchangeConfirmYes}
+                  className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
+                >
+                  はい
+                </button>
+                <button
+                  onClick={() => setShowExchangeConfirm(false)}
+                  className="w-full text-gray-500 text-sm py-2"
+                >
+                  いいえ
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppContext.Provider>
   );

@@ -1,5 +1,3 @@
-// バックエンドのPydanticスキーマに対応する型定義
-
 export interface PetCreate {
   name: string;
   personality: string;
@@ -48,17 +46,38 @@ export interface ReviewItem {
   created_at: string;
 }
 
+// ---- Exchange（新方式: payloadRaw ベース）----
+
 export interface ExchangeTokenResponse {
-  token: string;
+  payload_raw: number[];
+  token_key: string;
   expires_at: string;
-  sound_frequencies: number[];
-  qr_data: string;
+  qr_url: string;
 }
 
-export interface JoinExchangeResponse {
-  session_id: string;
-  status: 'waiting' | 'confirmed';
+export type ResolveStatus = 'matched' | 'waiting' | 'expired' | 'used' | 'not_found' | 'self';
+
+export interface ResolveExchangeResponse {
+  status: ResolveStatus;
+  session_id?: string;
+  pending_id?: string;
 }
+
+export interface MatchStatusResponse {
+  status: 'waiting' | 'matched';
+  session_id?: string;
+}
+
+export interface SessionResponse {
+  session_id: string;
+  status: 'active' | 'ended';
+  speaker_id: string;
+  common_message: string | null;
+  analysis_id: string | null;
+  ended_by?: string;
+}
+
+// ---- Analysis / Report ----
 
 export type CardType =
   | 'common_point'
