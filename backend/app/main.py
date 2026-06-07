@@ -1,0 +1,277 @@
+import logging
+from contextlib import asynccontextmanager
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+
+from app.agents.encounter_agent import EncounterAgent
+from app.agents.memory_agent import MemoryAgent
+from app.agents.pet_persona_agent import PetPersonaAgent
+from app.agents.topic_agent import TopicAgent
+from app.config import Settings, get_settings
+from app.schemas.encounter import (
+    ExchangeApproveRequest,
+    ExchangeAnalysisResponse,
+    ExchangeTokenResponse,
+    FeedbackRequest,
+    JoinExchangeRequest,
+    JoinExchangeResponse,
+    ReportResponse,
+)
+from app.schemas.memory import (
+    MemoryApproveRequest,
+    MemoryClassifyResult,
+    PublicMemoryResponse,
+    ReviewItem,
+)
+from app.schemas.pet import PetCreate, PetResponse, UserInputCreate
+from app.services.firestore_service import FirestoreService
+from app.services.token_service import TokenService
+from app.services.vertex_ai_service import VertexAIService
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# ---- Singletons ----
+
+_firestore: FirestoreService | None = None
+_vertex_ai: VertexAIService | None = None
+_token_service: TokenService | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _firestore, _vertex_ai, _token_service
+    settings = get_settings()
+    _firestore = FirestoreService(settings)
+    _vertex_ai = VertexAIService(settings)
+    _token_service = TokenService(settings)
+    logger.info("AI Pet API started")
+    yield
+    logger.info("AI Pet API shutting down")
+
+
+app = FastAPI(title="AI Pet API", version="1.0.0", lifespan=lifespan)
+
+
+# ---- Dependencies ----
+
+def get_firestore() -> FirestoreService:
+    assert _firestore is not None
+    return _firestore
+
+
+def get_vertex_ai() -> VertexAIService:
+    assert _vertex_ai is not None
+    return _vertex_ai
+
+
+def get_token_service_dep() -> TokenService:
+    assert _token_service is not None
+    return _token_service
+
+
+async def require_auth(
+    authorization: Annotated[str | None, Header()] = None,
+    settings: Settings = Depends(get_settings),
+    token_svc: TokenService = Depends(get_token_service_dep),
+) -> str:
+    if settings.skip_auth:
+        return "dev-user-id"
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+    id_token = authorization.removeprefix("Bearer ").strip()
+    try:
+        return token_svc.verify_firebase_token(id_token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+# ---- Routes ----
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/pets", response_model=PetResponse)
+def create_pet(
+    body: PetCreate,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+):
+    pet_id = db.create_pet(uid, {"name": body.name, "personality": body.personality, "tone": body.tone})
+    db.upsert_user(uid, {"name": uid})
+
+    # LLM1: extract initial profile from pet settings
+    persona_agent = PetPersonaAgent(ai)
+    result = persona_agent.extract_initial_profile(body, {
+        "personality": body.personality,
+        "tone": body.tone,
+    })
+    if result.category in ("public", "private"):
+        db.upsert_private_memory(uid, {
+            "interests": result.interests,
+            "values": result.values,
+            "pet_personality": body.personality,
+            "pet_tone": body.tone,
+        })
+    if result.category == "public" and result.safe_summary:
+        db.upsert_public_memory(uid, {
+            "safe_summaries": [result.safe_summary],
+            "shareable_interests": result.interests,
+            "safe_topic_tags": result.interests,
+            "public_conversation_hooks": [],
+        })
+
+    pet = db.get_pet_by_user(uid)
+    return PetResponse(
+        pet_id=pet_id,
+        user_id=uid,
+        name=body.name,
+        personality=body.personality,
+        tone=body.tone,
+        created_at=pet.get("created_at", "") if pet else "",
+    )
+
+
+@app.post("/inputs", response_model=MemoryClassifyResult)
+def submit_input(
+    body: UserInputCreate,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+):
+    agent = MemoryAgent(ai, db)
+    return agent.classify_and_store(uid, body)
+
+
+@app.get("/memories/public", response_model=PublicMemoryResponse)
+def get_public_memory(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    mem = db.get_public_memory(uid) or {}
+    return PublicMemoryResponse(
+        user_id=uid,
+        safe_topic_tags=mem.get("safe_topic_tags", []),
+        safe_summaries=mem.get("safe_summaries", []),
+        public_conversation_hooks=mem.get("public_conversation_hooks", []),
+        shareable_interests=mem.get("shareable_interests", []),
+        updated_at=mem.get("updated_at", ""),
+    )
+
+
+@app.get("/memories/review", response_model=list[ReviewItem])
+def get_review_items(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    items = db.get_review_items(uid)
+    return [
+        ReviewItem(
+            id=item.get("id", ""),
+            candidate_summary=item.get("candidate_summary", ""),
+            reason=item.get("reason", ""),
+            status=item.get("status", "pending"),
+            created_at=item.get("created_at", ""),
+        )
+        for item in items
+    ]
+
+
+@app.put("/memories/{item_id}/approve")
+def approve_memory(
+    item_id: str,
+    body: MemoryApproveRequest,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    db.resolve_review_item(uid, item_id, body.action)
+    return {"item_id": item_id, "action": body.action}
+
+
+@app.post("/exchanges/token", response_model=ExchangeTokenResponse)
+def issue_exchange_token(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+    token_svc: TokenService = Depends(get_token_service_dep),
+):
+    agent = EncounterAgent(ai, db, token_svc)
+    return agent.issue_token(uid)
+
+
+@app.post("/exchanges/join", response_model=JoinExchangeResponse)
+def join_exchange(
+    body: JoinExchangeRequest,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+    token_svc: TokenService = Depends(get_token_service_dep),
+):
+    agent = EncounterAgent(ai, db, token_svc)
+    return agent.join_session(uid, body)
+
+
+@app.post("/exchanges/{session_id}/approve")
+def approve_exchange(
+    session_id: str,
+    body: ExchangeApproveRequest,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+    token_svc: TokenService = Depends(get_token_service_dep),
+):
+    agent = EncounterAgent(ai, db, token_svc)
+    return agent.approve_exchange(session_id, uid, body.approved)
+
+
+@app.get("/exchanges/{session_id}/analysis", response_model=ExchangeAnalysisResponse)
+def get_exchange_analysis(
+    session_id: str,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+    token_svc: TokenService = Depends(get_token_service_dep),
+):
+    agent = EncounterAgent(ai, db, token_svc)
+    return agent.get_analysis(session_id)
+
+
+@app.get("/reports/{analysis_id}", response_model=ReportResponse)
+def get_report(
+    analysis_id: str,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+):
+    analysis = db.get_exchange_analysis(analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+    private_mem = db.get_private_memory(uid) or {}
+    pet_tone = private_mem.get("pet_tone", "やわらかい短文")
+    pet_personality = private_mem.get("pet_personality", "好奇心旺盛")
+
+    agent = TopicAgent(ai, db)
+    return agent.generate_post_visit_report(analysis_id, analysis, pet_tone, pet_personality)
+
+
+@app.post("/reports/{analysis_id}/feedback")
+def submit_feedback(
+    analysis_id: str,
+    body: FeedbackRequest,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+):
+    db.save_card_feedback(analysis_id, body.card_id, body.reaction)
+
+    # LLM4: update memory from feedback
+    reactions = [{"card_id": body.card_id, "reaction": body.reaction}]
+    mem_agent = MemoryAgent(ai, db)
+    mem_agent.update_from_feedback(uid, reactions)
+
+    return {"card_id": body.card_id, "reaction": body.reaction}

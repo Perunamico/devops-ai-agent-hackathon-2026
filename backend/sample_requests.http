@@ -1,0 +1,115 @@
+### 1. Health Check
+GET http://localhost:8080/health
+
+###
+
+### 2. Create Pet (LLM1 initial profile)
+POST http://localhost:8080/pets
+Authorization: Bearer dev-token
+Content-Type: application/json
+
+{
+  "name": "ポチ",
+  "personality": "好奇心旺盛で探検家みたい",
+  "tone": "やわらかく短文、断定しない"
+}
+
+###
+
+### 3. Submit Input - public (LLM1 classification)
+POST http://localhost:8080/inputs
+Authorization: Bearer dev-token
+Content-Type: application/json
+
+{
+  "input_type": "chat",
+  "content": "最近カフェで作業するのにはまってる。特に朝の静かな時間帯が好き"
+}
+
+###
+
+### 4. Submit Input - should be blocked (PII)
+POST http://localhost:8080/inputs
+Authorization: Bearer dev-token
+Content-Type: application/json
+
+{
+  "input_type": "chat",
+  "content": "私の電話番号は090-1234-5678です"
+}
+
+###
+
+### 5. Get Public Memory
+GET http://localhost:8080/memories/public
+Authorization: Bearer dev-token
+
+###
+
+### 6. Get Review Items
+GET http://localhost:8080/memories/review
+Authorization: Bearer dev-token
+
+###
+
+### 7. Approve Review Item
+PUT http://localhost:8080/memories/ITEM_ID_HERE/approve
+Authorization: Bearer dev-token
+Content-Type: application/json
+
+{
+  "action": "approve"
+}
+
+###
+
+### 8. Issue Exchange Token
+POST http://localhost:8080/exchanges/token
+Authorization: Bearer dev-token
+
+###
+
+### 9. Join Exchange (use token from step 8)
+POST http://localhost:8080/exchanges/join
+Authorization: Bearer dev-token
+Content-Type: application/json
+
+{
+  "token": "TOKEN_FROM_STEP_8",
+  "exchange_method": "qr_fallback"
+}
+
+###
+
+### 10. Approve Exchange (user A - session from step 9)
+POST http://localhost:8080/exchanges/SESSION_ID_HERE/approve
+Authorization: Bearer dev-token
+Content-Type: application/json
+
+{
+  "approved": true
+}
+
+###
+
+### 11. Get Analysis (LLM2 result)
+GET http://localhost:8080/exchanges/SESSION_ID_HERE/analysis
+Authorization: Bearer dev-token
+
+###
+
+### 12. Get Post-Visit Report (LLM3 - lazy generation)
+GET http://localhost:8080/reports/ANALYSIS_ID_HERE
+Authorization: Bearer dev-token
+
+###
+
+### 13. Submit Feedback (LLM4 memory update)
+POST http://localhost:8080/reports/ANALYSIS_ID_HERE/feedback
+Authorization: Bearer dev-token
+Content-Type: application/json
+
+{
+  "card_id": "CARD_ID_HERE",
+  "reaction": "saved"
+}
