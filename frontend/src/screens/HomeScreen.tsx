@@ -39,12 +39,6 @@ declare global {
   }
 }
 
-const PET_EMOJIS = ['🐱', '🐶', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁'];
-
-function getPetEmoji(name: string): string {
-  const idx = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0) % PET_EMOJIS.length;
-  return PET_EMOJIS[idx];
-}
 
 function buildPetReply(result: MemoryClassifyResult, petName: string): string {
   switch (result.category) {
@@ -72,12 +66,33 @@ export default function HomeScreen() {
   const [listening, setListening] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-
-  const petEmoji = pet ? getPetEmoji(pet.name) : '🐾';
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isBlink, setIsBlink] = useState(false);
+  const normalPlayCountRef = useRef(0);
 
   useEffect(() => {
     getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.load();
+    v.play().catch(() => {});
+  }, [isBlink]);
+
+  function handleVideoEnded() {
+    if (isBlink) {
+      setIsBlink(false);
+    } else {
+      normalPlayCountRef.current += 1;
+      if (normalPlayCountRef.current % 2 === 0) {
+        setIsBlink(true);
+      } else {
+        videoRef.current?.play();
+      }
+    }
+  }
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -128,80 +143,79 @@ export default function HomeScreen() {
     (window.SpeechRecognition || window.webkitSpeechRecognition)
   );
 
+  const bubbleText = petBubble ?? `おはよう！${pet?.name ?? 'ペット'}だよ！`;
+
   return (
-    <div className="flex flex-col min-h-svh pt-14">
+    <div className="flex flex-col h-[calc(100dvh-5rem)] bg-white">
       {/* レビューバナー */}
       {reviewCount > 0 && (
         <button
           onClick={() => setScreen('review')}
-          className="mx-4 mt-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-xs text-amber-800 flex items-center justify-between"
+          className="mx-4 mt-3 flex-shrink-0 bg-amber-50 rounded-xl px-4 py-2 text-xs text-amber-800 flex items-center justify-between"
         >
           <span>🔔 確認が必要な記憶が {reviewCount} 件あります</span>
           <span className="text-amber-500">→</span>
         </button>
       )}
 
-      {/* ペットクローズアップゾーン */}
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 py-8">
-        {/* 吹き出し */}
-        {petBubble ? (
-          <div className="relative bg-violet-50 border border-violet-200 rounded-2xl rounded-bl-sm px-5 py-3 max-w-xs text-sm text-gray-800 shadow-sm">
-            {petBubble}
-            <div className="absolute -bottom-2 left-4 w-4 h-4 bg-violet-50 border-r border-b border-violet-200 rotate-45" />
-          </div>
-        ) : (
-          <div className="relative bg-gray-50 border border-gray-200 rounded-2xl rounded-bl-sm px-5 py-3 max-w-xs text-sm text-gray-500 shadow-sm">
-            何か話しかけてみて！
-            <div className="absolute -bottom-2 left-4 w-4 h-4 bg-gray-50 border-r border-b border-gray-200 rotate-45" />
-          </div>
-        )}
+      {/* 動画: flame/input に被らない flex-1 領域に収める */}
+      <div className="flex-1 min-h-0">
+        <video
+          ref={videoRef}
+          src={isBlink ? '/movie/blink.mp4' : '/movie/normal.mp4'}
+          autoPlay
+          muted
+          playsInline
+          onEnded={handleVideoEnded}
+          className="w-full h-full object-contain"
+        />
+      </div>
 
-        {/* ペット絵文字 */}
-        <span
-          className="select-none"
-          style={{ fontSize: '9rem', lineHeight: 1 }}
-        >
-          {petEmoji}
-        </span>
-
-        {/* ペット名 */}
-        <p className="text-lg font-bold text-gray-700">{pet?.name ?? 'ペット'}</p>
+      {/* 吹き出し */}
+      <div className="relative mx-6 mb-3 flex-shrink-0">
+        <img src="/icons/flame.png" className="w-full" alt="" />
+        <div className="absolute inset-0 flex items-center justify-center px-10">
+          <p className="text-sm text-gray-800 text-center leading-relaxed">{bubbleText}</p>
+        </div>
       </div>
 
       {/* 入力エリア */}
-      <div className="px-4 pb-6 space-y-3">
-        <div className="flex gap-2 items-end">
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            rows={2}
-            placeholder="ペットに話しかける..."
-            className="flex-1 rounded-xl border border-gray-200 px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
-          />
+      <div className="px-4 pb-6 flex-shrink-0">
+        <form onSubmit={handleSubmit} className="flex items-center gap-3">
+          <div className="flex-1 bg-white rounded-full px-5 py-3">
+            <input
+              type="text"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="メッセージを入力..."
+              className="w-full outline-none text-sm text-gray-700 placeholder-gray-400 bg-transparent"
+            />
+          </div>
           {hasSpeechAPI && (
             <button
               onClick={toggleListening}
               type="button"
-              className={`w-11 h-11 rounded-full flex items-center justify-center text-xl transition-colors flex-shrink-0
-                ${listening ? 'bg-red-100 text-red-500 animate-pulse' : 'bg-violet-100 text-violet-600'}`}
+              className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors
+                ${listening ? 'bg-red-500 animate-pulse' : 'bg-sky-500'}`}
             >
-              🎤
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="white"
+                className="w-6 h-6"
+              >
+                <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z" />
+                <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z" />
+              </svg>
             </button>
           )}
-        </div>
-        <button
-          onClick={handleSubmit}
-          disabled={submitting || !content.trim()}
-          className="w-full bg-violet-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-violet-700 disabled:opacity-40 transition-colors"
-        >
-          {submitting ? '考え中...' : '話しかける'}
-        </button>
+        </form>
       </div>
     </div>
   );
