@@ -66,7 +66,8 @@ export default function HomeScreen() {
   const [listening, setListening] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const normalVideoRef = useRef<HTMLVideoElement>(null);
+  const blinkVideoRef = useRef<HTMLVideoElement>(null);
   const [isBlink, setIsBlink] = useState(false);
   const normalPlayCountRef = useRef(0);
 
@@ -74,22 +75,20 @@ export default function HomeScreen() {
     getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
-    v.load();
-    v.play().catch(() => {});
-  }, [isBlink]);
-
   function handleVideoEnded() {
     if (isBlink) {
       setIsBlink(false);
+      normalVideoRef.current?.play().catch(() => {});
     } else {
       normalPlayCountRef.current += 1;
       if (normalPlayCountRef.current % 2 === 0) {
         setIsBlink(true);
+        if (blinkVideoRef.current) {
+          blinkVideoRef.current.currentTime = 0;
+          blinkVideoRef.current.play().catch(() => {});
+        }
       } else {
-        videoRef.current?.play();
+        normalVideoRef.current?.play().catch(() => {});
       }
     }
   }
@@ -159,15 +158,27 @@ export default function HomeScreen() {
       )}
 
       {/* 動画: flame/input に被らない flex-1 領域に収める */}
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 relative">
         <video
-          ref={videoRef}
-          src={isBlink ? '/movie/blink.mp4' : '/movie/normal.mp4'}
+          ref={normalVideoRef}
+          src="/movie/normal.mp4"
           autoPlay
           muted
           playsInline
+          preload="auto"
           onEnded={handleVideoEnded}
-          className="w-full h-full object-contain"
+          style={{ opacity: isBlink ? 0 : 1 }}
+          className="absolute inset-0 w-full h-full object-contain"
+        />
+        <video
+          ref={blinkVideoRef}
+          src="/movie/blink.mp4"
+          muted
+          playsInline
+          preload="auto"
+          onEnded={handleVideoEnded}
+          style={{ opacity: isBlink ? 1 : 0 }}
+          className="absolute inset-0 w-full h-full object-contain"
         />
       </div>
 
