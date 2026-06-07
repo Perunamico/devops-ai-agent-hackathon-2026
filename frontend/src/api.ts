@@ -6,7 +6,9 @@ import type {
   PublicMemoryResponse,
   ReviewItem,
   ExchangeTokenResponse,
-  JoinExchangeResponse,
+  ResolveExchangeResponse,
+  MatchStatusResponse,
+  SessionResponse,
   ExchangeAnalysisResponse,
   ReportResponse,
 } from './types';
@@ -48,20 +50,33 @@ export const approveMemory = (itemId: string, action: 'approve' | 'reject') =>
     body: JSON.stringify({ action }),
   });
 
+// ---- Exchange（新方式）----
+
 export const issueToken = () =>
   apiFetch<ExchangeTokenResponse>('/exchanges/token', { method: 'POST' });
 
-export const joinExchange = (token: string, exchange_method: 'sound' | 'qr_fallback' = 'sound') =>
-  apiFetch<JoinExchangeResponse>('/exchanges/join', {
+export const resolveExchange = (payload_raw: number[]) =>
+  apiFetch<ResolveExchangeResponse>('/exchanges/resolve', {
     method: 'POST',
-    body: JSON.stringify({ token, exchange_method }),
+    body: JSON.stringify({ payload_raw }),
   });
 
-export const approveExchange = (sessionId: string) =>
-  apiFetch<{ status: string; analysis_id?: string }>(`/exchanges/${sessionId}/approve`, {
-    method: 'POST',
-    body: JSON.stringify({ approved: true }),
-  });
+export const getMatchStatus = (pendingId: string) =>
+  apiFetch<MatchStatusResponse>(`/exchanges/match/${pendingId}`);
+
+export const pollToken = (tokenKey: string) =>
+  apiFetch<MatchStatusResponse>(`/exchanges/token/${tokenKey}/poll`);
+
+export const scanQrToken = (tokenKey: string) =>
+  apiFetch<ResolveExchangeResponse>(`/exchanges/qr-scan/${tokenKey}`, { method: 'POST' });
+
+export const getSession = (sessionId: string) =>
+  apiFetch<SessionResponse>(`/exchanges/session/${sessionId}`);
+
+export const endSession = (sessionId: string) =>
+  apiFetch<void>(`/exchanges/session/${sessionId}/end`, { method: 'POST' });
+
+// ---- Analysis / Report ----
 
 export const getAnalysis = (sessionId: string) =>
   apiFetch<ExchangeAnalysisResponse>(`/exchanges/${sessionId}/analysis`);

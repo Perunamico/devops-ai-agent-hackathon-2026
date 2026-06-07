@@ -10,12 +10,13 @@ from app.agents.pet_persona_agent import PetPersonaAgent
 from app.agents.topic_agent import TopicAgent
 from app.config import Settings, get_settings
 from app.schemas.encounter import (
-    ExchangeApproveRequest,
-    ExchangeAnalysisResponse,
     ExchangeTokenResponse,
+    ResolveExchangeRequest,
+    ResolveExchangeResponse,
+    MatchStatusResponse,
+    SessionResponse,
+    ExchangeAnalysisResponse,
     FeedbackRequest,
-    JoinExchangeRequest,
-    JoinExchangeResponse,
     ReportResponse,
 )
 from app.schemas.memory import (
@@ -51,7 +52,7 @@ async def lifespan(app: FastAPI):
     logger.info("AI Pet API shutting down")
 
 
-app = FastAPI(title="AI Pet API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="AI Pet API", version="2.0.0", lifespan=lifespan)
 
 
 # ---- Dependencies ----
@@ -87,6 +88,14 @@ async def require_auth(
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
+def _encounter(
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+    token_svc: TokenService = Depends(get_token_service_dep),
+) -> EncounterAgent:
+    return EncounterAgent(ai, db, token_svc)
+
+
 # ---- Routes ----
 
 @app.get("/health")
@@ -104,7 +113,6 @@ def create_pet(
     pet_id = db.create_pet(uid, {"name": body.name, "personality": body.personality, "tone": body.tone})
     db.upsert_user(uid, {"name": uid})
 
-    # LLM1: extract initial profile from pet settings
     persona_agent = PetPersonaAgent(ai)
     result = persona_agent.extract_initial_profile(body, {
         "personality": body.personality,
@@ -192,51 +200,79 @@ def approve_memory(
     return {"item_id": item_id, "action": body.action}
 
 
+# ---- Exchange エンドポイント（新方式）----
+
 @app.post("/exchanges/token", response_model=ExchangeTokenResponse)
 def issue_exchange_token(
     uid: str = Depends(require_auth),
-    db: FirestoreService = Depends(get_firestore),
-    ai: VertexAIService = Depends(get_vertex_ai),
-    token_svc: TokenService = Depends(get_token_service_dep),
+    agent: EncounterAgent = Depends(_encounter),
 ):
-    agent = EncounterAgent(ai, db, token_svc)
     return agent.issue_token(uid)
 
 
-@app.post("/exchanges/join", response_model=JoinExchangeResponse)
-def join_exchange(
-    body: JoinExchangeRequest,
+@app.post("/exchanges/resolve", response_model=ResolveExchangeResponse)
+def resolve_exchange(
+    body: ResolveExchangeRequest,
     uid: str = Depends(require_auth),
-    db: FirestoreService = Depends(get_firestore),
-    ai: VertexAIService = Depends(get_vertex_ai),
-    token_svc: TokenService = Depends(get_token_service_dep),
+    agent: EncounterAgent = Depends(_encounter),
 ):
-    agent = EncounterAgent(ai, db, token_svc)
-    return agent.join_session(uid, body)
+    return agent.resolve_token(uid, body.payload_raw)
 
 
-@app.post("/exchanges/{session_id}/approve")
-def approve_exchange(
+@app.get("/exchanges/match/{pending_id}", response_model=MatchStatusResponse)
+def get_match_status(
+    pending_id: str,
+    uid: str = Depends(require_auth),
+    agent: EncounterAgent = Depends(_encounter),
+):
+    return agent.get_match_status(pending_id, uid)
+
+
+@app.get("/exchanges/token/{token_key}/poll", response_model=MatchStatusResponse)
+def poll_token_status(
+    token_key: str,
+    uid: str = Depends(require_auth),
+    agent: EncounterAgent = Depends(_encounter),
+):
+    return agent.poll_token(token_key, uid)
+
+
+@app.post("/exchanges/qr-scan/{token_key}", response_model=ResolveExchangeResponse)
+def scan_qr_token(
+    token_key: str,
+    uid: str = Depends(require_auth),
+    agent: EncounterAgent = Depends(_encounter),
+):
+    return agent.scan_qr_token(uid, token_key)
+
+
+@app.get("/exchanges/session/{session_id}", response_model=SessionResponse)
+def get_session(
     session_id: str,
-    body: ExchangeApproveRequest,
     uid: str = Depends(require_auth),
-    db: FirestoreService = Depends(get_firestore),
-    ai: VertexAIService = Depends(get_vertex_ai),
-    token_svc: TokenService = Depends(get_token_service_dep),
+    agent: EncounterAgent = Depends(_encounter),
 ):
-    agent = EncounterAgent(ai, db, token_svc)
-    return agent.approve_exchange(session_id, uid, body.approved)
+    return agent.get_session(session_id, uid)
 
+
+@app.post("/exchanges/session/{session_id}/end")
+def end_session(
+    session_id: str,
+    uid: str = Depends(require_auth),
+    agent: EncounterAgent = Depends(_encounter),
+):
+    agent.end_session(session_id, uid)
+    return {"session_id": session_id, "status": "ended"}
+
+
+# ---- analysis / reports（旧 AnalysisScreen 互換）----
 
 @app.get("/exchanges/{session_id}/analysis", response_model=ExchangeAnalysisResponse)
 def get_exchange_analysis(
     session_id: str,
     uid: str = Depends(require_auth),
-    db: FirestoreService = Depends(get_firestore),
-    ai: VertexAIService = Depends(get_vertex_ai),
-    token_svc: TokenService = Depends(get_token_service_dep),
+    agent: EncounterAgent = Depends(_encounter),
 ):
-    agent = EncounterAgent(ai, db, token_svc)
     return agent.get_analysis(session_id)
 
 
@@ -269,7 +305,6 @@ def submit_feedback(
 ):
     db.save_card_feedback(analysis_id, body.card_id, body.reaction)
 
-    # LLM4: update memory from feedback
     reactions = [{"card_id": body.card_id, "reaction": body.reaction}]
     mem_agent = MemoryAgent(ai, db)
     mem_agent.update_from_feedback(uid, reactions)

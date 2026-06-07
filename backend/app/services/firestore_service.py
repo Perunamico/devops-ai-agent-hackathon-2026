@@ -147,24 +147,67 @@ class FirestoreService:
             self.add_blocked_memory(user_id, {"blocked_topic": item.get("candidate_summary", ""), "reason": "user_rejected"})
             self._set(f"users/{user_id}/review_required", item_id, {**item, "status": "rejected"})
 
-    # ---- exchange tokens ----
+    # ---- exchange tokens (新方式: payloadRaw ベース) ----
 
-    def save_exchange_token(self, token: str, data: dict) -> None:
-        self._set("exchange_tokens", token, data)
+    def save_exchange_token(self, token_key: str, data: dict) -> None:
+        """data には payload_raw, token_key, issued_by, expires_at, used を含む"""
+        self._set("exchange_tokens", token_key, data)
 
-    def get_exchange_token(self, token: str) -> dict | None:
-        return self._get("exchange_tokens", token)
+    def get_exchange_token(self, token_key: str) -> dict | None:
+        return self._get("exchange_tokens", token_key)
 
-    def delete_exchange_token(self, token: str) -> None:
-        self._delete("exchange_tokens", token)
+    def mark_exchange_token_used(self, token_key: str) -> None:
+        existing = self._get("exchange_tokens", token_key) or {}
+        self._set("exchange_tokens", token_key, {**existing, "used": True})
 
-    # ---- exchange sessions ----
+    def mark_exchange_token_used_with_session(self, token_key: str, session_id: str) -> None:
+        existing = self._get("exchange_tokens", token_key) or {}
+        self._set("exchange_tokens", token_key, {**existing, "used": True, "session_id": session_id})
+
+    def delete_exchange_token(self, token_key: str) -> None:
+        self._delete("exchange_tokens", token_key)
+
+    # ---- exchange match records ----
+
+    def save_match_record(self, data: dict) -> str:
+        """resolver_id, token_owner_id, payload_raw, recorded_at, pending_id, session_id=None"""
+        record_id = str(uuid.uuid4())
+        data["id"] = record_id
+        self._set("exchange_match_records", record_id, data)
+        return record_id
+
+    def get_match_record(self, record_id: str) -> dict | None:
+        return self._get("exchange_match_records", record_id)
+
+    def update_match_record(self, record_id: str, data: dict) -> None:
+        existing = self._get("exchange_match_records", record_id) or {}
+        self._set("exchange_match_records", record_id, {**existing, **data})
+
+    def find_reverse_match(self, resolver_id: str, token_owner_id: str) -> dict | None:
+        """token_owner_id が resolver_id のトークンを照合済みかチェック"""
+        records = self._list("exchange_match_records")
+        for r in records:
+            if r.get("resolver_id") == token_owner_id and r.get("token_owner_id") == resolver_id:
+                return r
+        return None
+
+    def find_pending_match_by_pending_id(self, pending_id: str) -> dict | None:
+        records = self._list("exchange_match_records")
+        for r in records:
+            if r.get("pending_id") == pending_id:
+                return r
+        return None
+
+    # ---- exchange sessions (新方式) ----
 
     def create_exchange_session(self, data: dict) -> str:
         session_id = str(uuid.uuid4())
         data["id"] = session_id
-        data["status"] = "waiting"
-        data["created_at"] = self._now().isoformat()
+        data.setdefault("status", "active")
+        data.setdefault("created_at", self._now().isoformat())
+        data.setdefault("ended_at", None)
+        data.setdefault("common_message", None)
+        data.setdefault("analysis_id", None)
         self._set("exchange_sessions", session_id, data)
         return session_id
 
@@ -174,6 +217,8 @@ class FirestoreService:
     def update_exchange_session(self, session_id: str, data: dict) -> None:
         existing = self._get("exchange_sessions", session_id) or {}
         self._set("exchange_sessions", session_id, {**existing, **data})
+
+    # ---- (旧方式互換: 参加者管理) ----
 
     def add_participant(self, session_id: str, user_id: str) -> None:
         data = {"session_id": session_id, "user_id": user_id, "approved": False, "joined_at": self._now().isoformat()}
