@@ -11,6 +11,7 @@ import ReportScreen from './screens/ReportScreen';
 import PetExchangeScreen from './screens/PetExchangeScreen';
 
 type Screen = 'setup' | 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange';
+type ExchangeSetupStep = null | 'mic' | 'requesting_mic' | 'volume';
 
 interface AppCtx {
   screen: Screen;
@@ -21,8 +22,8 @@ interface AppCtx {
   setSessionId: (id: string | null) => void;
   analysisId: string | null;
   setAnalysisId: (id: string | null) => void;
-  showExchangeConfirm: boolean;
-  setShowExchangeConfirm: (v: boolean) => void;
+  exchangeSetupStep: ExchangeSetupStep;
+  setExchangeSetupStep: (step: ExchangeSetupStep) => void;
 }
 
 export const AppContext = createContext<AppCtx>({
@@ -34,8 +35,8 @@ export const AppContext = createContext<AppCtx>({
   setSessionId: () => {},
   analysisId: null,
   setAnalysisId: () => {},
-  showExchangeConfirm: false,
-  setShowExchangeConfirm: () => {},
+  exchangeSetupStep: null,
+  setExchangeSetupStep: () => {},
 });
 
 export function useApp() {
@@ -50,11 +51,11 @@ const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
 ];
 
 function TopNav() {
-  const { screen, setScreen, setShowExchangeConfirm } = useApp();
+  const { screen, setScreen, setExchangeSetupStep } = useApp();
 
   if (screen !== 'home') {
     return (
-      <nav className="fixed top-0 left-0 right-0 bg-white flex items-center px-4 z-50 max-w-md mx-auto h-14">
+      <nav className="fixed top-0 left-0 right-0 bg-white flex items-center px-4 z-50 max-w-md mx-auto h-14" style={{ willChange: 'transform' }}>
         <button
           onClick={() => setScreen('home')}
           className="flex items-center gap-1.5 text-gray-600 text-sm font-medium"
@@ -70,12 +71,12 @@ function TopNav() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 bg-white flex gap-2 px-3 py-2 z-50 max-w-md mx-auto h-20">
+    <nav className="fixed top-0 left-0 right-0 bg-white flex gap-2 px-3 py-2 z-50 max-w-md mx-auto h-20" style={{ willChange: 'transform' }}>
       {NAV_ITEMS.map((item) => (
         <button
           key={item.screen}
           onClick={() => {
-            if (item.screen === 'petexchange') setShowExchangeConfirm(true);
+            if (item.screen === 'petexchange') setExchangeSetupStep('mic');
             else if (item.screen === 'exchange') setScreen('petexchange');
             else setScreen(item.screen);
           }}
@@ -97,18 +98,30 @@ export default function App() {
   const [pet, setPet] = useState<PetResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
-  const [showExchangeConfirm, setShowExchangeConfirm] = useState(false);
+  const [exchangeSetupStep, setExchangeSetupStep] = useState<ExchangeSetupStep>(null);
 
   const ctx: AppCtx = {
     screen, setScreen,
     pet, setPet,
     sessionId, setSessionId,
     analysisId, setAnalysisId,
-    showExchangeConfirm, setShowExchangeConfirm,
+    exchangeSetupStep,
+    setExchangeSetupStep,
   };
 
-  function handleExchangeConfirmYes() {
-    setShowExchangeConfirm(false);
+  async function handleMicNext() {
+    setExchangeSetupStep('requesting_mic');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach(t => t.stop());
+      setExchangeSetupStep('volume');
+    } catch {
+      setExchangeSetupStep(null);
+    }
+  }
+
+  function handleVolumeStart() {
+    setExchangeSetupStep(null);
     setScreen('exchange');
   }
 
@@ -132,29 +145,52 @@ export default function App() {
           {renderScreen()}
         </div>
 
-        {/* 交流確認モーダル（ホーム画面からのポップ）*/}
-        {showExchangeConfirm && (
-          <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40">
+        {/* マイク確認ポップ（ホーム画面上） */}
+        {exchangeSetupStep === 'mic' && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40" style={{ willChange: 'transform' }}>
             <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl">
               <div className="text-center space-y-2">
-                <div className="text-4xl">🐾</div>
-                <h2 className="text-lg font-bold text-gray-900">お相手のペットと交流を開始しますか？</h2>
-                <p className="text-sm text-gray-500">マイクを使って近くのペットを探します</p>
+                <div className="text-4xl">🎤</div>
+                <h2 className="text-lg font-bold text-gray-900">マイクをONにしてください</h2>
+                <p className="text-sm text-gray-500">鳴き声を使って近くのペットを探します</p>
               </div>
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={handleExchangeConfirmYes}
-                  className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
-                >
-                  はい
-                </button>
-                <button
-                  onClick={() => setShowExchangeConfirm(false)}
-                  className="w-full text-gray-500 text-sm py-2"
-                >
-                  いいえ
-                </button>
+              <button
+                onClick={handleMicNext}
+                className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
+              >
+                次へ
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* マイク許可確認中ポップ */}
+        {exchangeSetupStep === 'requesting_mic' && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40" style={{ willChange: 'transform' }}>
+            <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
+              <div className="flex flex-col items-center gap-3">
+                <div className="text-4xl animate-pulse">🎤</div>
+                <p className="text-gray-600 text-sm">マイクの許可を確認中...</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 音量調整ポップ（ホーム画面上） */}
+        {exchangeSetupStep === 'volume' && (
+          <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40" style={{ willChange: 'transform' }}>
+            <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl">
+              <div className="text-center space-y-2">
+                <div className="text-4xl">🔊</div>
+                <h2 className="text-lg font-bold text-gray-900">音量を調整してください</h2>
+                <p className="text-sm text-gray-500">端末の音量を上げて、相手の端末に近づけてください</p>
+              </div>
+              <button
+                onClick={handleVolumeStart}
+                className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
+              >
+                OK、始める
+              </button>
             </div>
           </div>
         )}
