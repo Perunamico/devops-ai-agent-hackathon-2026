@@ -10,6 +10,7 @@
 | [docs/flow.md](docs/flow.md) | 全フロー図（初期設定〜交流履歴まで7フロー + ERD） |
 | [docs/stack.md](docs/stack.md) | 技術スタック・Docker構成仕様 |
 | [docs/frontend.md](docs/frontend.md) | フロントエンド構成・画面仕様・音声通信実装 |
+| [docs/deploy.md](docs/deploy.md) | Google Cloud / Firebase への手動デプロイ手順 |
 
 ---
 
@@ -40,7 +41,7 @@
 
 | 領域 | 技術 |
 |------|------|
-| Frontend | Vite + React + TypeScript + TailwindCSS |
+| Frontend | Next.js + React + TypeScript |
 | Backend | FastAPI (Python 3.12) |
 | AI | Vertex AI Gemini (`gemini-2.5-flash`) |
 | Database | Firestore |
@@ -59,7 +60,8 @@
 │   ├── flow.md                # 全フロー図（Mermaid）
 │   ├── stack.md               # 技術スタック・Docker仕様
 │   └── frontend.md            # フロントエンド構成・音声通信仕様
-├── frontend/                  # Vite + React フロントエンド
+├── frontend/                  # Next.js + React フロントエンド
+│   ├── app/                   # App Router エントリポイント
 │   ├── src/
 │   │   ├── App.tsx            # 画面状態管理・BottomNav
 │   │   ├── types.ts           # バックエンドスキーマ対応型定義
@@ -67,7 +69,7 @@
 │   │   ├── audio.ts           # 鳴き声通信（Web Audio API + FFT）
 │   │   └── screens/           # 6画面コンポーネント
 │   ├── package.json
-│   └── vite.config.ts         # /api → localhost:8080 プロキシ設定
+│   └── next.config.ts         # Firebase Hosting 用 static export
 └── backend/
     ├── Dockerfile             # python:3.12-slim、PORT=8080
     ├── .env.example           # 環境変数テンプレート
@@ -156,14 +158,14 @@ npm run dev
 
 **5. ブラウザで確認**
 
-http://localhost:5173 を開くとアプリが表示されます。
+http://localhost:3000 を開くとアプリが表示されます。
 
 ```
-http://localhost:5173  ← フロントエンド（React）
+http://localhost:3000  ← フロントエンド（Next.js）
 http://localhost:8080  ← バックエンドAPI（FastAPI）
 ```
 
-フロントエンドの `/api/*` リクエストは自動的に `localhost:8080` へプロキシされます。
+ローカル開発では `next.config.ts` の rewrites が `/api/*` を `localhost:8080` へ転送します。本番では Firebase Hosting の rewrites が `/api/*` を Cloud Run へ転送します。
 
 ### Docker での起動（バックエンドのみ）
 

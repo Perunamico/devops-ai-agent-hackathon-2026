@@ -12,16 +12,18 @@ import type {
   ExchangeAnalysisResponse,
   ReportResponse,
 } from './types';
+import { getFirebaseIdToken } from './firebase';
 
 const BASE = '/api';
 const AUTH_HEADER = 'Bearer dev-token';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const idToken = await getFirebaseIdToken();
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
-      Authorization: AUTH_HEADER,
+      Authorization: idToken ? `Bearer ${idToken}` : AUTH_HEADER,
       ...init?.headers,
     },
   });
