@@ -57,10 +57,13 @@ export default function ExchangeScreen() {
       listenerRef.current = null;
     }
     // failed 時: ホームと同じ映像(normal.mp4)に切り替えて再生
+    // load() 直後は readyState=HAVE_NOTHING のため canplay イベント後に play() する
     if (step === 'failed' && exchangingVideoRef.current) {
-      exchangingVideoRef.current.src = '/movie/normal.mp4';
-      exchangingVideoRef.current.load();
-      exchangingVideoRef.current.play().catch(() => {});
+      const video = exchangingVideoRef.current;
+      video.src = '/movie/normal.mp4';
+      video.load();
+      const onCanPlay = () => video.play().catch(() => {});
+      video.addEventListener('canplay', onCanPlay, { once: true });
     }
   }, [step]);
 
@@ -146,11 +149,19 @@ export default function ExchangeScreen() {
     // 最大6回: サイクル先頭で映像リセット → 1秒待機 → 1秒鳴く → 0.5秒待機
     for (let attempt = 0; attempt < MAX_ATTEMPTS && playingRef.current && !resolvedRef.current; attempt++) {
       // サイクル開始と同時に映像を先頭から再生（ループ全体と映像のタイミングが一致）
-      // src を明示的に指定して load() することで、failed 後のリトライ時も確実に bark.mp4 を再生する
       if (exchangingVideoRef.current) {
-        exchangingVideoRef.current.src = '/movie/bark.mp4';
-        exchangingVideoRef.current.load();
-        exchangingVideoRef.current.play().catch(() => {});
+        const video = exchangingVideoRef.current;
+        if (!video.currentSrc.endsWith('bark.mp4')) {
+          // failed 後のリトライ: normal.mp4 が残っているので再ロードしてから再生
+          video.src = '/movie/bark.mp4';
+          video.load();
+          await new Promise<void>(resolve => {
+            video.addEventListener('canplay', () => { video.play().catch(() => {}); resolve(); }, { once: true });
+          });
+        } else {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+        }
       }
       await new Promise(r => setTimeout(r, 1000));
       if (!playingRef.current || resolvedRef.current) break;
