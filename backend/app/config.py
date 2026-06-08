@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     firestore_database: str = "(default)"
     firestore_enabled: bool = True
     firebase_project_id: str | None = None
+    app_base_url: str = "https://your-app.example.com"
     skip_auth: bool = False
     log_level: str = "INFO"
 

@@ -1,161 +1,256 @@
-// バックエンドのtoken_service.pyと同じエンコード仕様
-// FREQ_BASE = 700, FREQ_STEP = 200（16ステップ）
-// トークン8バイト → 16周波数（各バイトを上位/下位ニブルに分割）
-// パイロット同期トーン：500 Hz
+// 鳴き声通信プロトコル
+// シンボル 0–15 → 周波数 1000–4000 Hz (200 Hz 刻み)
+// START = 14 (3800 Hz), END = 15 (4000 Hz)
+// フレーム: START + 14 DATA_SYMBOLS + END
 
-const FREQ_BASE = 700;
-const FREQ_STEP = 200;
-const PILOT_FREQ = 500;
-const TONE_DURATION = 0.15; // 150ms per tone
-const PILOT_DURATION = 0.2; // 200ms for pilot
+const SYMBOL_FREQS: number[] = Array.from({ length: 16 }, (_, i) => 1000 + i * 200);
+const START_SYMBOL = 14;
+const END_SYMBOL = 15;
+const BASE = 13;             // データシンボル値範囲 0–12
+const VERSION = 0;
+const DATA_SYMBOLS_LEN = 14; // VERSION(1) + PAYLOAD(11) + CHECKSUM(2)
 
-function playTone(ctx: AudioContext, freq: number, startTime: number, duration: number) {
+const GAP_MIN = 30;
+
+// 受信パラメータ
+const FFT_SIZE = 8192;
+const MIN_STABLE_FRAMES = 2;  // この連続フレーム数で安定判定 (≈33ms @60fps)
+const AMP_THRESHOLD = 50;
+const FREQ_TOLERANCE_HZ = 80; // 最近傍スナップ許容幅
+
+// ---- チェックサム ----
+
+export function computeChecksum(payloadRaw: number[]): [number, number] {
+  const s = payloadRaw.reduce((a, v) => a + v, 0) % BASE;
+  const w = payloadRaw.reduce((a, v, i) => a + v * (i + 1), 0) % BASE;
+  return [s, w];
+}
+
+// ---- エンコード ----
+
+function encodeSymbols(rawData: number[]): number[] {
+  let prev = START_SYMBOL;
+  const result: number[] = [];
+  for (const raw of rawData) {
+    const candidates = Array.from({ length: BASE + 1 }, (_, i) => i).filter(s => s !== prev);
+    result.push(candidates[raw]);
+    prev = candidates[raw];
+  }
+  return result;
+}
+
+export function encodePayload(payloadRaw: number[]): number[] {
+  const [cs, cw] = computeChecksum(payloadRaw);
+  const rawData = [VERSION, ...payloadRaw, cs, cw];
+  const encoded = encodeSymbols(rawData);
+  return [START_SYMBOL, ...encoded, END_SYMBOL];
+}
+
+// ---- デコード ----
+
+function decodeSymbols(encodedData: number[]): number[] | null {
+  let prev = START_SYMBOL;
+  const result: number[] = [];
+  for (const encoded of encodedData) {
+    const candidates = Array.from({ length: BASE + 1 }, (_, i) => i).filter(s => s !== prev);
+    const idx = candidates.indexOf(encoded);
+    if (idx === -1) return null;
+    result.push(idx);
+    prev = encoded;
+  }
+  return result;
+}
+
+export function decodeFrame(dataSymbols: number[]): number[] | null {
+  if (dataSymbols.length !== DATA_SYMBOLS_LEN) return null;
+  const raw = decodeSymbols(dataSymbols);
+  if (!raw) return null;
+  if (raw[0] !== VERSION) return null;
+  const payloadRaw = raw.slice(1, 12);
+  const [cs, cw] = computeChecksum(payloadRaw);
+  if (raw[12] !== cs || raw[13] !== cw) return null;
+  return payloadRaw;
+}
+
+// ---- 送信 ----
+
+function playTone(ctx: AudioContext, freq: number, startTime: number, durationMs: number): void {
+  const dur = durationMs / 1000;
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
   osc.connect(gain);
   gain.connect(ctx.destination);
   osc.type = 'triangle';
   osc.frequency.value = freq;
-  gain.gain.setValueAtTime(0.3, startTime);
-  gain.gain.setValueAtTime(0.3, startTime + duration - 0.02);
-  gain.gain.linearRampToValueAtTime(0, startTime + duration);
+  const fade = Math.min(0.02, dur * 0.15);
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(0.28, startTime + fade);
+  gain.gain.setValueAtTime(0.28, startTime + dur - fade);
+  gain.gain.linearRampToValueAtTime(0, startTime + dur);
   osc.start(startTime);
-  osc.stop(startTime + duration);
+  osc.stop(startTime + dur);
 }
 
-export async function playToken(frequencies: number[]): Promise<void> {
+export async function playSymbols(symbols: number[]): Promise<void> {
   const ctx = new AudioContext();
+  const totalMs = 1000;
+  const n = symbols.length;
+
+  // 各スロット最低 60ms (dur=30ms + gap=30ms) を確保し、残り 40ms をランダム分配
+  const minSlotMs = 60;
+  const remainMs = totalMs - minSlotMs * n;
+  const weights = Array.from({ length: n }, () => Math.random());
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const slotMs = weights.map(w => minSlotMs + (w / totalWeight) * remainMs);
+
   let t = ctx.currentTime + 0.05;
 
-  playTone(ctx, PILOT_FREQ, t, PILOT_DURATION);
-  t += PILOT_DURATION;
-
-  for (const freq of frequencies) {
-    playTone(ctx, freq, t, TONE_DURATION);
-    t += TONE_DURATION;
+  for (let i = 0; i < n; i++) {
+    const sym = symbols[i];
+    const freq = SYMBOL_FREQS[sym];
+    const slot = slotMs[i];
+    const durMs = Math.max(10, slot - GAP_MIN);
+    playTone(ctx, freq, t, durMs);
+    t += slot / 1000;
   }
 
-  playTone(ctx, PILOT_FREQ, t, PILOT_DURATION);
-  t += PILOT_DURATION;
-
-  await new Promise<void>((resolve) => setTimeout(resolve, (t - ctx.currentTime) * 1000 + 100));
-  await ctx.close();
+  await new Promise<void>(resolve => setTimeout(resolve, totalMs + 150));
+  ctx.close();
 }
 
-function snapToNearest(hz: number): number {
-  const candidates = [PILOT_FREQ];
-  for (let n = 0; n <= 15; n++) candidates.push(FREQ_BASE + n * FREQ_STEP);
-  return candidates.reduce((prev, curr) =>
-    Math.abs(curr - hz) < Math.abs(prev - hz) ? curr : prev
-  );
-}
-
-function decodeFrequencies(freqs: number[]): string | null {
-  if (freqs.length !== 16) return null;
-  const bytes: number[] = [];
-  for (let i = 0; i < 16; i += 2) {
-    const high = Math.round((freqs[i] - FREQ_BASE) / FREQ_STEP);
-    const low = Math.round((freqs[i + 1] - FREQ_BASE) / FREQ_STEP);
-    if (high < 0 || high > 15 || low < 0 || low > 15) return null;
-    bytes.push((high << 4) | low);
-  }
-  // base64urlエンコードされたASCII文字列として復元
-  return bytes.map((b) => String.fromCharCode(b)).join('');
-}
+// ---- 受信 ----
 
 export type StopListening = () => void;
 
-export async function listenForToken(
-  onToken: (token: string) => void,
-  onError: (msg: string) => void
-): Promise<StopListening> {
-  let stream: MediaStream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  } catch {
-    onError('マイクの許可が必要です');
-    return () => {};
+function snapToSymbol(hz: number): number | null {
+  let best = -1;
+  let bestDist = Infinity;
+  for (let i = 0; i < SYMBOL_FREQS.length; i++) {
+    const dist = Math.abs(hz - SYMBOL_FREQS[i]);
+    if (dist < bestDist) { bestDist = dist; best = i; }
   }
+  return bestDist <= FREQ_TOLERANCE_HZ ? best : null;
+}
 
-  const ctx = new AudioContext({ sampleRate: 44100 });
-  const source = ctx.createMediaStreamSource(stream);
-  const analyser = ctx.createAnalyser();
-  analyser.fftSize = 8192;
-  analyser.smoothingTimeConstant = 0.1;
-  source.connect(analyser);
+function detectPeakSymbol(analyser: AnalyserNode, dataArray: Uint8Array<ArrayBuffer>): number | null {
+  analyser.getByteFrequencyData(dataArray);
+  const binHz = analyser.context.sampleRate / analyser.fftSize;
+  const loIdx = Math.floor(900 / binHz);
+  const hiIdx = Math.min(Math.ceil(4100 / binHz), dataArray.length - 1);
 
-  const bufLen = analyser.frequencyBinCount;
-  const dataArray = new Uint8Array(bufLen);
-  const sampleRate = ctx.sampleRate;
-
-  function hzToIndex(hz: number) {
-    return Math.round((hz * analyser.fftSize) / sampleRate);
+  let maxVal = 0;
+  let maxIdx = 0;
+  for (let i = loIdx; i <= hiIdx; i++) {
+    if (dataArray[i] > maxVal) { maxVal = dataArray[i]; maxIdx = i; }
   }
-  function indexToHz(idx: number) {
-    return (idx * sampleRate) / analyser.fftSize;
-  }
+  if (maxVal < AMP_THRESHOLD) return null;
+  return snapToSymbol(maxIdx * binHz);
+}
 
-  let detected: number[] = [];
-  let lastSnapped = 0;
-  let recording = false;
+export function createBarkListener(
+  ownPayload: number[],
+  onPayloadRaw: (payload: number[]) => void,
+  onError: (reason: 'mic_denied') => void,
+): { start: () => Promise<void>; stop: () => void } {
   let animId = 0;
+  let stream: MediaStream | null = null;
+  let audioCtx: AudioContext | null = null;
   let stopped = false;
 
-  function loop() {
-    if (stopped) return;
-    analyser.getByteFrequencyData(dataArray);
+  function stop() {
+    stopped = true;
+    cancelAnimationFrame(animId);
+    stream?.getTracks().forEach(t => t.stop());
+    audioCtx?.close();
+  }
 
-    const lo = hzToIndex(400);
-    const hi = Math.min(hzToIndex(4200), bufLen - 1);
+  async function start() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      onError('mic_denied');
+      return;
+    }
 
-    let maxVal = 0;
-    let maxIdx = 0;
-    for (let i = lo; i <= hi; i++) {
-      if (dataArray[i] > maxVal) {
-        maxVal = dataArray[i];
-        maxIdx = i;
+    audioCtx = new AudioContext();
+    const source = audioCtx.createMediaStreamSource(stream);
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = FFT_SIZE;
+    analyser.smoothingTimeConstant = 0.1;
+    source.connect(analyser);
+
+    const dataArray = new Uint8Array(analyser.frequencyBinCount) as Uint8Array<ArrayBuffer>;
+
+    // 受信状態機械
+    type RxState = 'IDLE' | 'READING' | 'LOCKED';
+    let rxState: RxState = 'IDLE';
+    let buffer: number[] = [];
+    let currentSymbol: number | null = null;
+    let stableCount = 0;
+
+    function emitSymbol(sym: number) {
+      if (rxState === 'LOCKED') return;
+
+      if (sym === START_SYMBOL) {
+        rxState = 'READING';
+        buffer = [];
+        return;
+      }
+
+      if (rxState !== 'READING') return;
+
+      if (sym === END_SYMBOL) {
+        const decoded = decodeFrame(buffer);
+        if (decoded && !arraysEqual(decoded, ownPayload)) {
+          rxState = 'LOCKED';
+          onPayloadRaw(decoded);
+        } else {
+          rxState = 'IDLE';
+        }
+        buffer = [];
+        return;
+      }
+
+      // 有効データシンボル 0–13
+      if (sym < 0 || sym > BASE) {
+        rxState = 'IDLE';
+        buffer = [];
+        return;
+      }
+
+      // 隣接重複圧縮（二重カウント対策）
+      if (buffer.length > 0 && buffer[buffer.length - 1] === sym) return;
+
+      buffer.push(sym);
+      if (buffer.length > DATA_SYMBOLS_LEN) {
+        rxState = 'IDLE';
+        buffer = [];
       }
     }
 
-    if (maxVal > 60) {
-      const hz = indexToHz(maxIdx);
-      const snapped = snapToNearest(hz);
+    function loop() {
+      if (stopped) return;
+      const sym = detectPeakSymbol(analyser, dataArray);
 
-      if (snapped !== lastSnapped) {
-        lastSnapped = snapped;
-
-        if (snapped === PILOT_FREQ) {
-          if (!recording) {
-            recording = true;
-            detected = [];
-          } else {
-            if (detected.length === 16) {
-              const token = decodeFrequencies(detected);
-              if (token) onToken(token);
-            }
-            recording = false;
-            detected = [];
-          }
-        } else if (recording) {
-          detected.push(snapped);
-          if (detected.length > 20) {
-            // オーバーフロー：リセット
-            recording = false;
-            detected = [];
-          }
+      if (sym === currentSymbol) {
+        stableCount++;
+        if (stableCount === MIN_STABLE_FRAMES && sym !== null) {
+          emitSymbol(sym);
         }
+      } else {
+        currentSymbol = sym;
+        stableCount = 1;
       }
+
+      animId = requestAnimationFrame(loop);
     }
 
     animId = requestAnimationFrame(loop);
   }
 
-  loop();
+  return { start, stop };
+}
 
-  return () => {
-    stopped = true;
-    cancelAnimationFrame(animId);
-    stream.getTracks().forEach((t) => t.stop());
-    ctx.close();
-  };
+function arraysEqual(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
 }

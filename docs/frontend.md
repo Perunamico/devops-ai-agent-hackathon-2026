@@ -11,13 +11,13 @@
 
 | 項目 | 選択 | 理由 |
 |------|------|------|
-| ビルドツール | Vite + React + TypeScript | 高速HMR、型安全 |
-| スタイル | TailwindCSS v3 | ユーティリティクラスで素早くモバイルUI |
+| ビルドツール | Next.js + React + TypeScript | Firebase Hosting 向け static export、型安全 |
+| スタイル | 通常 CSS | Tailwind CSS には依存しない |
 | QRコード | qrcode.react | 交換トークンのQR表示 |
 | 音声通信 | Web Audio API（標準ブラウザAPI） | マイク録音・FFT解析・超音波トーン再生 |
 | ルーティング | React state（`screen` 変数） | ページ数が少なく react-router 不要 |
 | サーバー通信 | fetch + useState/useEffect | 外部ライブラリ不要 |
-| APIプロキシ | Vite dev proxy `/api` → `localhost:8080` | CORS問題を回避 |
+| APIプロキシ | Next.js dev rewrites / Firebase Hosting rewrites | `/api` をバックエンドへ転送 |
 
 ---
 
@@ -25,20 +25,18 @@
 
 ```
 frontend/
-├── index.html
+├── app/
+│   ├── layout.tsx           # Next.js App Router レイアウト
+│   └── page.tsx             # Reactアプリのエントリーポイント
 ├── package.json
-├── vite.config.ts          # /api → localhost:8080 プロキシ
-├── tailwind.config.js
-├── postcss.config.js
+├── next.config.ts          # static export とローカル /api rewrite
 ├── tsconfig.json
 └── src/
-    ├── main.tsx            # Reactエントリーポイント
     ├── App.tsx             # 画面状態管理・Context・BottomNav
     ├── types.ts            # バックエンドPydanticスキーマ対応の型定義
     ├── api.ts              # 全APIクライアント関数
     ├── audio.ts            # 鳴き声通信ロジック（送受信）
-    ├── App.css             # 空ファイル（TailwindCSSで管理）
-    ├── index.css           # Tailwindディレクティブ
+    ├── index.css           # 通常 CSS
     └── screens/
         ├── SetupScreen.tsx     # ペット作成
         ├── HomeScreen.tsx      # ホーム・入力・公開メモリ表示
@@ -248,7 +246,7 @@ export async function listenForToken(
 
 ## APIクライアント（api.ts）
 
-Vite の dev proxy が `/api/*` を `http://localhost:8080/*` に転送するため、CORS設定なしで動作します。
+ローカル開発では Next.js dev rewrites が `/api/*` を `http://localhost:8080/*` に転送します。本番では Firebase Hosting の rewrites が `/api/**` を Cloud Run に転送します。
 
 ```typescript
 // 全APIコール共通のベースfetch
@@ -294,7 +292,7 @@ uvicorn app.main:app --port 8080 --reload
 cd frontend
 npm install
 npm run dev
-# → http://localhost:5173
+# → http://localhost:3000
 ```
 
 `backend/.env` に以下を設定してください：
@@ -309,7 +307,7 @@ FIRESTORE_ENABLED=false
 
 ## デモシナリオ（推奨操作順）
 
-1. **セットアップ**：http://localhost:5173 を開く → ペット名・性格・口調を入力して作成
+1. **セットアップ**：http://localhost:3000 を開く → ペット名・性格・口調を入力して作成
 2. **記憶入力**：「カフェで作業するのが好き」「読書が趣味」などをchatモードで数件入力
 3. **公開メモリ確認**：ホーム下部にタグが追加されることを確認
 4. **交換（発行側）**：「近くのペットを探す」をクリック → マイク許可 → 鳴き声が再生される

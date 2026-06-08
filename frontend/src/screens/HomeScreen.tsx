@@ -20,7 +20,7 @@ declare global {
     abort(): void;
   }
   interface SpeechRecognitionEvent extends Event {
-    results: SpeechRecognitionResultList;
+    readonly results: SpeechRecognitionResultList;
   }
   interface SpeechRecognitionResultList {
     readonly length: number;
