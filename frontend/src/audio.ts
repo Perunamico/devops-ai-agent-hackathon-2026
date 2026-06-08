@@ -22,7 +22,7 @@ const GAP_MAX = 50;
 
 // 受信パラメータ
 const FFT_SIZE = 8192;
-const MIN_STABLE_FRAMES = 3;  // この連続フレーム数で安定判定 (≈50ms @60fps)
+const MIN_STABLE_FRAMES = 2;  // この連続フレーム数で安定判定 (≈33ms @60fps)
 const AMP_THRESHOLD = 50;
 const FREQ_TOLERANCE_HZ = 80; // 最近傍スナップ許容幅
 
@@ -105,24 +105,28 @@ function playTone(ctx: AudioContext, freq: number, startTime: number, durationMs
 
 export async function playSymbols(symbols: number[]): Promise<void> {
   const ctx = new AudioContext();
+  const totalMs = 1000;
+  const n = symbols.length;
+
+  // 各スロット最低 60ms (dur=30ms + gap=30ms) を確保し、残り 40ms をランダム分配
+  const minSlotMs = 60;
+  const remainMs = totalMs - minSlotMs * n;
+  const weights = Array.from({ length: n }, () => Math.random());
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const slotMs = weights.map(w => minSlotMs + (w / totalWeight) * remainMs);
+
   let t = ctx.currentTime + 0.05;
 
-  for (const sym of symbols) {
+  for (let i = 0; i < n; i++) {
+    const sym = symbols[i];
     const freq = SYMBOL_FREQS[sym];
-    let durMs: number;
-    if (sym === START_SYMBOL) {
-      durMs = rand(START_DURATION_MIN, START_DURATION_MAX);
-    } else if (sym === END_SYMBOL) {
-      durMs = rand(END_DURATION_MIN, END_DURATION_MAX);
-    } else {
-      durMs = rand(DATA_DURATION_MIN, DATA_DURATION_MAX);
-    }
-    const gapMs = rand(GAP_MIN, GAP_MAX);
+    const slot = slotMs[i];
+    const durMs = Math.max(10, slot - GAP_MIN);
     playTone(ctx, freq, t, durMs);
-    t += (durMs + gapMs) / 1000;
+    t += slot / 1000;
   }
 
-  await new Promise<void>(resolve => setTimeout(resolve, (t - ctx.currentTime) * 1000 + 100));
+  await new Promise<void>(resolve => setTimeout(resolve, totalMs + 150));
   ctx.close();
 }
 

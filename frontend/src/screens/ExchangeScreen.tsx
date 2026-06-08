@@ -6,9 +6,6 @@ import { encodePayload, playSymbols, createBarkListener } from '../audio';
 import type { ExchangeTokenResponse, SessionResponse, ResolveStatus } from '../types';
 
 type ExchangeStep =
-  | 'mic_prompt'     // "マイクをONにしていいですか？" YES/NO
-  | 'requesting_mic' // getUserMedia 呼び出し中
-  | 'volume_adjust'  // 音量調整ポップ
   | 'exchanging'     // 鳴き声送受信メイン
   | 'resolving'      // サーバー照合中
   | 'waiting'        // 相手待ちポーリング
@@ -34,17 +31,16 @@ const ERROR_MESSAGES: Record<ErrorKind, string> = {
   generic: '交流できませんでした',
 };
 
-const PLAY_COUNT = 6;
 const POLL_INTERVAL_MS = 2000;
 const WAIT_TIMEOUT_MS = 90000;
 
 export default function ExchangeScreen() {
   const { setScreen, setSessionId, setAnalysisId } = useApp();
-  const [step, setStep] = useState<ExchangeStep>('mic_prompt');
+  const [step, setStep] = useState<ExchangeStep>('exchanging');
   const [errorKind, setErrorKind] = useState<ErrorKind>('generic');
   const [tokenData, setTokenData] = useState<ExchangeTokenResponse | null>(null);
-  const [playsLeft, setPlaysLeft] = useState(PLAY_COUNT);
   const [sessionData, setSessionData] = useState<SessionResponse | null>(null);
+  const [showQR, setShowQR] = useState(false);
 
   const listenerRef = useRef<ReturnType<typeof createBarkListener> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -52,6 +48,20 @@ export default function ExchangeScreen() {
   const msgPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playingRef = useRef(false);
   const resolvedRef = useRef(false); // 受信済みフラグ（二重処理防止）
+  const exchangingVideoRef = useRef<HTMLVideoElement>(null);
+
+  // 交流探索フェーズが終わったらマイクを確実にOFF
+  useEffect(() => {
+    if (step !== 'exchanging') {
+      listenerRef.current?.stop();
+      listenerRef.current = null;
+    }
+    // failed 時: ホームと同じ映像(normal.mp4)に切り替えて再生
+    if (step === 'failed' && exchangingVideoRef.current) {
+      exchangingVideoRef.current.currentTime = 0;
+      exchangingVideoRef.current.play().catch(() => {});
+    }
+  }, [step]);
 
   const cleanup = useCallback(() => {
     listenerRef.current?.stop();
@@ -61,6 +71,7 @@ export default function ExchangeScreen() {
     if (msgPollRef.current) { clearInterval(msgPollRef.current); msgPollRef.current = null; }
     playingRef.current = false;
     resolvedRef.current = false;
+    setShowQR(false);
   }, []);
 
   // コンポーネントアンマウント時にクリーンアップ
@@ -70,7 +81,11 @@ export default function ExchangeScreen() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const scannedToken = params.get('exchangeToken');
-    if (!scannedToken) return;
+    if (!scannedToken) {
+      // 通常フロー: マウント時に鳴き声交換を自動開始
+      startVoiceExchange();
+      return;
+    }
     // URL パラメータを除去
     const url = new URL(window.location.href);
     url.searchParams.delete('exchangeToken');
@@ -92,27 +107,7 @@ export default function ExchangeScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleMicNo() {
-    // NO → 交流できませんでしたポップを表示してホームに戻る
-    setErrorKind('mic_denied');
-    setStep('error');
-  }
-
-  async function handleMicYes() {
-    setStep('requesting_mic');
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(t => t.stop());
-    } catch {
-      setErrorKind('mic_denied');
-      setStep('error');
-      return;
-    }
-    setStep('volume_adjust');
-  }
-
-  async function handleVolumeOk() {
-    // トークン発行（マイク許可・音量調整完了直前）
+  async function startVoiceExchange() {
     let data: ExchangeTokenResponse;
     try {
       data = await issueToken();
@@ -124,12 +119,12 @@ export default function ExchangeScreen() {
     }
 
     setStep('exchanging');
-    setPlaysLeft(PLAY_COUNT);
 
-    // 自分の payloadRaw を用意して送受信を開始
+    // React レンダリング待ち
+    await new Promise(r => setTimeout(r, 0));
+
     const symbols = encodePayload(data.payload_raw);
 
-    // マイクリスナーを起動
     const listener = createBarkListener(
       data.payload_raw,
       async (detectedPayload) => {
@@ -139,26 +134,28 @@ export default function ExchangeScreen() {
         setStep('resolving');
         await handleResolve(detectedPayload);
       },
-      () => {
-        // mic_denied はここでは発生しない（許可済み）
-      },
+      () => {},
     );
     listenerRef.current = listener;
     listener.start();
 
-    // 6回鳴き声を流す
+    const MAX_ATTEMPTS = 6;
     playingRef.current = true;
-    for (let i = 0; i < PLAY_COUNT; i++) {
-      if (!playingRef.current) break;
-      await playSymbols(symbols);
-      setPlaysLeft(PLAY_COUNT - i - 1);
-      if (i < PLAY_COUNT - 1) {
-        // 次の送信まで少し待つ
-        await new Promise(r => setTimeout(r, 300));
+
+    // 最大6回: サイクル先頭で映像リセット → 1秒待機 → 1秒鳴く → 0.5秒待機
+    for (let attempt = 0; attempt < MAX_ATTEMPTS && playingRef.current && !resolvedRef.current; attempt++) {
+      // サイクル開始と同時に映像を先頭から再生（ループ全体と映像のタイミングが一致）
+      if (exchangingVideoRef.current) {
+        exchangingVideoRef.current.currentTime = 0;
+        exchangingVideoRef.current.play().catch(() => {});
       }
+      await new Promise(r => setTimeout(r, 1000));
+      if (!playingRef.current || resolvedRef.current) break;
+      await playSymbols(symbols);
+      if (!playingRef.current || resolvedRef.current) break;
+      await new Promise(r => setTimeout(r, 500));
     }
 
-    // 6回完了後もセッション未確立なら failed
     if (!resolvedRef.current && playingRef.current) {
       listenerRef.current?.stop();
       listenerRef.current = null;
@@ -248,19 +245,32 @@ export default function ExchangeScreen() {
     cleanup();
     setTokenData(null);
     setSessionData(null);
-    setStep('volume_adjust');
+    setStep('exchanging');
+    startVoiceExchange();
   }
 
   function handleQR() {
-    cleanup();
+    // 鳴き声送受信を停止してQRモードへ切り替え
+    listenerRef.current?.stop();
+    listenerRef.current = null;
+    playingRef.current = false;
+    resolvedRef.current = false;
+    setShowQR(true);
     issueToken().then(data => {
       setTokenData(data);
-      setStep('exchanging');
       startQrPolling(data.token_key);
     }).catch(() => {
       setErrorKind('generic');
       setStep('error');
     });
+  }
+
+  async function handleBackToVoice() {
+    if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
+    setTokenData(null);
+    setShowQR(false);
+    resolvedRef.current = false;
+    await startVoiceExchange();
   }
 
   function startQrPolling(tokenKey: string) {
@@ -292,106 +302,105 @@ export default function ExchangeScreen() {
 
   // ---- UI ----
 
-  if (step === 'mic_prompt') {
+  if (step === 'exchanging' || step === 'failed') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 gap-6">
-        <div className="text-5xl">🎤</div>
-        <div className="text-center space-y-2">
-          <h2 className="text-lg font-bold text-gray-900">マイクをONにしてもいいですか？</h2>
-          <p className="text-sm text-gray-500">鳴き声を使って近くのペットを探します</p>
-        </div>
-        <div className="flex flex-col w-full gap-3">
-          <button
-            onClick={handleMicYes}
-            className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
-          >
-            はい、ONにする
-          </button>
-          <button
-            onClick={handleMicNo}
-            className="w-full text-gray-500 text-sm py-2"
-          >
-            いいえ
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (step === 'requesting_mic') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 gap-4">
-        <div className="text-5xl animate-pulse">🎤</div>
-        <p className="text-gray-600 text-sm">マイクの許可を確認中...</p>
-      </div>
-    );
-  }
-
-  if (step === 'volume_adjust') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 gap-6">
-        <div className="text-5xl">🔊</div>
-        <div className="text-center space-y-2">
-          <h2 className="text-lg font-bold text-gray-900">音量を調整してください</h2>
-          <p className="text-sm text-gray-500">
-            端末の音量を上げて、相手の端末に近づけてください
-          </p>
-        </div>
-        <button
-          onClick={handleVolumeOk}
-          className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
-        >
-          OK、始める
-        </button>
-      </div>
-    );
-  }
-
-  if (step === 'exchanging') {
-    return (
-      <div className="flex flex-col items-center min-h-[70vh] px-4 pt-6 gap-6">
-        {/* 交流中の動画プレースホルダー */}
-        <div className="w-full aspect-square max-w-[240px] bg-gradient-to-br from-violet-100 to-purple-200 rounded-3xl flex items-center justify-center">
-          <div className="text-center space-y-2">
-            <div className="text-5xl animate-bounce">🎵</div>
-            <p className="text-xs text-violet-500 font-medium">交流動画（準備中）</p>
-          </div>
-        </div>
-
-        <div className="text-center space-y-1">
-          <p className="text-lg font-semibold text-gray-900">ペットが鳴いています...</p>
-          <p className="text-sm text-gray-500">周囲のペットの鳴き声を聞いています</p>
-          {playsLeft > 0 && (
-            <p className="text-xs text-gray-400">残り {playsLeft} 回</p>
+      <div className="flex flex-col h-[calc(100dvh-3.5rem)] bg-white relative">
+        {/* 動画: HomeScreen の flex-1 と同一構造 */}
+        <div className="flex-1 min-h-0 relative">
+          <video
+            ref={exchangingVideoRef}
+            src={step === 'failed' ? '/movie/normal.mp4' : '/movie/bark.mp4'}
+            loop
+            muted
+            playsInline
+            preload="auto"
+            className="absolute inset-0 w-full h-full object-contain"
+          />
+          {/* QRカード: video 上に overlay（下部高さを変えない）*/}
+          {showQR && tokenData && (
+            <div className="absolute inset-0 flex items-end justify-center pb-4">
+              <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-[calc(100%-2rem)] shadow-lg">
+                <p className="text-xs text-gray-500">QRコード（相手にスキャンしてもらう）</p>
+                <QRCode value={tokenData.qr_url} size={140} />
+                <p className="font-mono text-sm font-bold text-gray-700 tracking-widest">
+                  {tokenData.token_key}
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* 波形アニメーション */}
-        <div className="flex items-center gap-1 h-8">
-          {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6].map((h, i) => (
-            <div
-              key={i}
-              className="w-1.5 bg-violet-400 rounded-full animate-pulse"
-              style={{ height: `${h * 100}%`, animationDelay: `${i * 0.1}s` }}
-            />
-          ))}
+        {/* HomeScreen の吹き出しエリアと同一クラス → 高さが一致 */}
+        <div className="relative mx-6 mb-3 flex-shrink-0">
+          <img src="/icons/flame.png" className="w-full" alt="" />
+          {/* 鳴き声モードのみ波形アニメーションを表示 */}
+          {step === 'exchanging' && !showQR && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="flex items-center gap-1 h-8">
+                {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6].map((h, i) => (
+                  <div
+                    key={i}
+                    className="w-1.5 bg-violet-400 rounded-full animate-pulse"
+                    style={{ height: `${h * 100}%`, animationDelay: `${i * 0.1}s` }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* QRコードを使うボタン（常時表示）*/}
-        <button
-          onClick={handleQR}
-          className="flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4 py-2"
-        >
-          📷 QRコードを使う
-        </button>
+        {/* HomeScreen の入力エリアと同一クラス → 高さが一致 */}
+        <div className="px-4 pb-6 flex-shrink-0 flex items-center justify-center">
+          {showQR ? (
+            <button
+              onClick={handleBackToVoice}
+              className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+            >
+              🎵 鳴き声に戻る
+            </button>
+          ) : (
+            <button
+              onClick={handleQR}
+              className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+            >
+              📷 QRコードを使う
+            </button>
+          )}
+        </div>
 
-        {tokenData && (
-          <div className="mt-2 bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-full shadow-sm">
-            <p className="text-xs text-gray-500">QRコード（相手にスキャンしてもらう）</p>
-            <QRCode value={tokenData.qr_url} size={140} />
-            <p className="font-mono text-sm font-bold text-gray-700 tracking-widest">
-              {tokenData.token_key}
-            </p>
+        {/* 交流失敗ポップ: will-change:transform で GPU レイヤーに昇格し video の上に合成 */}
+        {step === 'failed' && (
+          <div
+            className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40"
+            style={{ willChange: 'transform' }}
+          >
+            <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+              <div className="text-center space-y-2">
+                <div className="text-4xl">😔</div>
+                <h2 className="text-lg font-bold text-gray-900">うまく交流できませんでした</h2>
+                <p className="text-sm text-gray-500">音量を上げるか、端末を近づけてみてください</p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleRetry}
+                  className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold"
+                >
+                  もう一度試す
+                </button>
+                <button
+                  onClick={handleQR}
+                  className="w-full border border-violet-400 text-violet-600 rounded-2xl py-4 font-bold"
+                >
+                  QRコードを使う
+                </button>
+                <button
+                  onClick={handleGiveUp}
+                  className="w-full text-gray-400 text-sm py-2"
+                >
+                  諦める
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -488,38 +497,6 @@ export default function ExchangeScreen() {
     );
   }
 
-  if (step === 'failed') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 gap-6 text-center">
-        <div className="text-4xl">😔</div>
-        <div className="space-y-2">
-          <h2 className="text-lg font-bold text-gray-900">うまく交流できませんでした</h2>
-          <p className="text-sm text-gray-500">音量を上げるか、端末を近づけてみてください</p>
-        </div>
-        <div className="flex flex-col w-full gap-3">
-          <button
-            onClick={handleRetry}
-            className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold"
-          >
-            もう一度試す
-          </button>
-          <button
-            onClick={handleQR}
-            className="w-full border border-violet-400 text-violet-600 rounded-2xl py-4 font-bold"
-          >
-            QRコードを使う
-          </button>
-          <button
-            onClick={handleGiveUp}
-            className="w-full text-gray-400 text-sm py-2"
-          >
-            諦める
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (step === 'error') {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 gap-6 text-center">
@@ -529,7 +506,7 @@ export default function ExchangeScreen() {
           <p className="text-sm text-gray-500">{ERROR_MESSAGES[errorKind]}</p>
         </div>
         <button
-          onClick={() => { setStep('mic_prompt'); cleanup(); }}
+          onClick={() => { cleanup(); startVoiceExchange(); }}
           className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold"
         >
           もう一度

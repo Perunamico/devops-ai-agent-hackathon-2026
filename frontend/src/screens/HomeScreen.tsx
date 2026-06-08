@@ -59,7 +59,7 @@ function buildPetReply(result: MemoryClassifyResult, petName: string): string {
 }
 
 export default function HomeScreen() {
-  const { pet, setScreen } = useApp();
+  const { pet, setScreen, exchangeSetupStep } = useApp();
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [petBubble, setPetBubble] = useState<string | null>(null);
