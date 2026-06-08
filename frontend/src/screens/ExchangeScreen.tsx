@@ -58,7 +58,8 @@ export default function ExchangeScreen() {
     }
     // failed 時: ホームと同じ映像(normal.mp4)に切り替えて再生
     if (step === 'failed' && exchangingVideoRef.current) {
-      exchangingVideoRef.current.currentTime = 0;
+      exchangingVideoRef.current.src = '/movie/normal.mp4';
+      exchangingVideoRef.current.load();
       exchangingVideoRef.current.play().catch(() => {});
     }
   }, [step]);
@@ -145,8 +146,10 @@ export default function ExchangeScreen() {
     // 最大6回: サイクル先頭で映像リセット → 1秒待機 → 1秒鳴く → 0.5秒待機
     for (let attempt = 0; attempt < MAX_ATTEMPTS && playingRef.current && !resolvedRef.current; attempt++) {
       // サイクル開始と同時に映像を先頭から再生（ループ全体と映像のタイミングが一致）
+      // src を明示的に指定して load() することで、failed 後のリトライ時も確実に bark.mp4 を再生する
       if (exchangingVideoRef.current) {
-        exchangingVideoRef.current.currentTime = 0;
+        exchangingVideoRef.current.src = '/movie/bark.mp4';
+        exchangingVideoRef.current.load();
         exchangingVideoRef.current.play().catch(() => {});
       }
       await new Promise(r => setTimeout(r, 1000));
@@ -309,7 +312,7 @@ export default function ExchangeScreen() {
         <div className="flex-1 min-h-0 relative">
           <video
             ref={exchangingVideoRef}
-            src={step === 'failed' ? '/movie/normal.mp4' : '/movie/bark.mp4'}
+            src="/movie/bark.mp4"
             loop
             muted
             playsInline
