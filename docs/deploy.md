@@ -69,7 +69,7 @@ gcloud run deploy $SERVICE \
   --image $IMAGE \
   --service-account "ai-pet-api-runner@$PROJECT_ID.iam.gserviceaccount.com" \
   --allow-unauthenticated \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,FIRESTORE_DATABASE=(default),VERTEX_AI_LOCATION=$REGION,GEMINI_MODEL=gemini-2.5-flash,USE_VERTEX_AI=true,SKIP_AUTH=false,FIRESTORE_ENABLED=true"
+  --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID,FIRESTORE_DATABASE=(default),VERTEX_AI_LOCATION=$REGION,GEMINI_MODEL=gemini-2.5-flash,USE_VERTEX_AI=true,SKIP_AUTH=false,FIRESTORE_ENABLED=true,APP_BASE_URL=https://gen-lang-client-0099285268.web.app"
 ```
 
 デプロイ後にヘルスチェックを確認します。

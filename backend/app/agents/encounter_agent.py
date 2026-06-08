@@ -13,6 +13,7 @@ from app.schemas.encounter import (
     ExchangeAnalysisResponse,
     ReportCard,
 )
+from app.config import get_settings
 from app.services.firestore_service import FirestoreService
 from app.services.token_service import TokenService
 from app.services.vertex_ai_service import VertexAIService
@@ -49,9 +50,6 @@ _MATCH_PROMPT = """\
 - common_messageは両端末に表示される1文のメッセージです
 """
 
-_BASE_URL = "https://your-app.example.com"
-
-
 class EncounterAgent:
     def __init__(
         self,
@@ -77,7 +75,8 @@ class EncounterAgent:
             "expires_at": expires_at.isoformat(),
             "used": False,
         })
-        qr_url = f"{_BASE_URL}/exchange?exchangeToken={token_key}"
+        base_url = get_settings().app_base_url.rstrip("/")
+        qr_url = f"{base_url}/exchange?exchangeToken={token_key}"
         return ExchangeTokenResponse(
             payload_raw=payload_raw,
             token_key=token_key,

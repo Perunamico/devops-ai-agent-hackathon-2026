@@ -77,7 +77,7 @@ function TopNav() {
           key={item.screen}
           onClick={() => {
             if (item.screen === 'petexchange') setExchangeSetupStep('mic');
-            else if (item.screen === 'exchange') setScreen('petexchange');
+            else if (item.screen === 'exchange') setScreen('exchange');
             else setScreen(item.screen);
           }}
           className="flex-1 flex flex-col items-center justify-center gap-1 bg-white rounded-2xl transition-all"

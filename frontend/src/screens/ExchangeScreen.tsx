@@ -41,6 +41,7 @@ export default function ExchangeScreen() {
   const [tokenData, setTokenData] = useState<ExchangeTokenResponse | null>(null);
   const [sessionData, setSessionData] = useState<SessionResponse | null>(null);
   const [showQR, setShowQR] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
 
   const listenerRef = useRef<ReturnType<typeof createBarkListener> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -72,6 +73,7 @@ export default function ExchangeScreen() {
     playingRef.current = false;
     resolvedRef.current = false;
     setShowQR(false);
+    setQrLoading(false);
   }, []);
 
   // コンポーネントアンマウント時にクリーンアップ
@@ -255,13 +257,19 @@ export default function ExchangeScreen() {
     listenerRef.current = null;
     playingRef.current = false;
     resolvedRef.current = false;
+    setStep('exchanging');
     setShowQR(true);
+    setQrLoading(true);
+    setTokenData(null);
     issueToken().then(data => {
       setTokenData(data);
       startQrPolling(data.token_key);
     }).catch(() => {
+      setShowQR(false);
       setErrorKind('generic');
       setStep('error');
+    }).finally(() => {
+      setQrLoading(false);
     });
   }
 
@@ -269,6 +277,7 @@ export default function ExchangeScreen() {
     if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
     setTokenData(null);
     setShowQR(false);
+    setQrLoading(false);
     resolvedRef.current = false;
     await startVoiceExchange();
   }
@@ -304,27 +313,41 @@ export default function ExchangeScreen() {
 
   if (step === 'exchanging' || step === 'failed') {
     return (
-      <div className="flex flex-col h-[calc(100dvh-3.5rem)] bg-white relative">
+      <div
+        className="flex flex-col bg-white relative"
+        style={{ height: 'calc(100svh - 3.5rem)' }}
+      >
         {/* 動画: HomeScreen の flex-1 と同一構造 */}
         <div className="flex-1 min-h-0 relative">
           <video
             ref={exchangingVideoRef}
-            src="/movie/normal.mp4"
+            src="/movie/bark.mp4"
+            autoPlay
             loop
             muted
             playsInline
             preload="auto"
+            onLoadedData={() => exchangingVideoRef.current?.play().catch(() => {})}
             className="absolute inset-0 w-full h-full object-contain"
           />
           {/* QRカード: video 上に overlay（下部高さを変えない）*/}
-          {showQR && tokenData && (
+          {showQR && (
             <div className="absolute inset-0 flex items-end justify-center pb-4">
               <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-[calc(100%-2rem)] shadow-lg">
-                <p className="text-xs text-gray-500">QRコード（相手にスキャンしてもらう）</p>
-                <QRCode value={tokenData.qr_url} size={140} />
-                <p className="font-mono text-sm font-bold text-gray-700 tracking-widest">
-                  {tokenData.token_key}
-                </p>
+                {qrLoading || !tokenData ? (
+                  <>
+                    <div className="text-4xl animate-pulse">📷</div>
+                    <p className="text-xs text-gray-500">QRコードを準備中...</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-gray-500">QRコード（相手にスキャンしてもらう）</p>
+                    <QRCode value={tokenData.qr_url} size={140} />
+                    <p className="font-mono text-sm font-bold text-gray-700 tracking-widest">
+                      {tokenData.token_key}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -369,7 +392,7 @@ export default function ExchangeScreen() {
         </div>
 
         {/* 交流失敗ポップ: will-change:transform で GPU レイヤーに昇格し video の上に合成 */}
-        {step === 'failed' && (
+        {step === 'failed' && !showQR && (
           <div
             className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40"
             style={{ willChange: 'transform' }}
