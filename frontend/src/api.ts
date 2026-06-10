@@ -2,6 +2,8 @@ import type {
   PetCreate,
   PetResponse,
   UserInputCreate,
+  ChatRequest,
+  ChatResponse,
   MemoryClassifyResult,
   PublicMemoryResponse,
   ReviewItem,
@@ -39,6 +41,9 @@ export const createPet = (body: PetCreate) =>
 
 export const submitInput = (body: UserInputCreate) =>
   apiFetch<MemoryClassifyResult>('/inputs', { method: 'POST', body: JSON.stringify(body) });
+
+export const sendChat = (body: ChatRequest) =>
+  apiFetch<ChatResponse>('/chat', { method: 'POST', body: JSON.stringify(body) });
 
 export const getPublicMemory = () =>
   apiFetch<PublicMemoryResponse>('/memories/public');

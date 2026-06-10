@@ -94,6 +94,12 @@ class FirestoreService:
         self._set(f"users/{user_id}/user_inputs", input_id, data)
         return input_id
 
+    def save_chat_message(self, user_id: str, message_data: dict) -> str:
+        message_id = str(uuid.uuid4())
+        data = {"id": message_id, "user_id": user_id, "created_at": self._now().isoformat(), **message_data}
+        self._set(f"users/{user_id}/chat_messages", message_id, data)
+        return message_id
+
     # ---- memories ----
 
     def upsert_private_memory(self, user_id: str, data: dict) -> None:
