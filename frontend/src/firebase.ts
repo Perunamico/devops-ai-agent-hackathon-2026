@@ -21,8 +21,13 @@ export async function getFirebaseIdToken(): Promise<string | null> {
     return null;
   }
 
-  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
-  return user.getIdToken();
+  try {
+    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const user = auth.currentUser ?? (await signInAnonymously(auth)).user;
+    return user.getIdToken();
+  } catch (error) {
+    console.warn('Firebase anonymous sign-in failed; falling back to local dev token.', error);
+    return null;
+  }
 }
