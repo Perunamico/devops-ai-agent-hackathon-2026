@@ -24,6 +24,10 @@ interface AppCtx {
   setAnalysisId: (id: string | null) => void;
   exchangeSetupStep: ExchangeSetupStep;
   setExchangeSetupStep: (step: ExchangeSetupStep) => void;
+  homeLoading: boolean;
+  setHomeLoading: (v: boolean) => void;
+  reviewCount: number;
+  setReviewCount: (n: number) => void;
 }
 
 export const AppContext = createContext<AppCtx>({
@@ -37,6 +41,10 @@ export const AppContext = createContext<AppCtx>({
   setAnalysisId: () => {},
   exchangeSetupStep: null,
   setExchangeSetupStep: () => {},
+  homeLoading: false,
+  setHomeLoading: () => {},
+  reviewCount: 0,
+  setReviewCount: () => {},
 });
 
 export function useApp() {
@@ -51,7 +59,9 @@ const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
 ];
 
 function TopNav() {
-  const { screen, setScreen, setExchangeSetupStep } = useApp();
+  const { screen, setScreen, setExchangeSetupStep, homeLoading, reviewCount } = useApp();
+
+  if (homeLoading) return null;
 
   if (screen !== 'home') {
     return (
@@ -82,7 +92,14 @@ function TopNav() {
           }}
           className="flex-1 flex flex-col items-center justify-center gap-1 bg-white rounded-2xl transition-all"
         >
-          <img src={item.iconImg} className="w-8 h-8 object-contain" alt={item.label} />
+          <div className="relative">
+            <img src={item.iconImg} className="w-8 h-8 object-contain" alt={item.label} />
+            {item.screen === 'review' && reviewCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {reviewCount}
+              </span>
+            )}
+          </div>
           <span className="text-[10px] text-gray-500">{item.label}</span>
         </button>
       ))}
@@ -99,6 +116,8 @@ export default function App() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [exchangeSetupStep, setExchangeSetupStep] = useState<ExchangeSetupStep>(null);
+  const [homeLoading, setHomeLoading] = useState(false);
+  const [reviewCount, setReviewCount] = useState(0);
 
   const ctx: AppCtx = {
     screen, setScreen,
@@ -107,6 +126,8 @@ export default function App() {
     analysisId, setAnalysisId,
     exchangeSetupStep,
     setExchangeSetupStep,
+    homeLoading, setHomeLoading,
+    reviewCount, setReviewCount,
   };
 
   async function handleMicNext() {
@@ -141,7 +162,7 @@ export default function App() {
     <AppContext.Provider value={ctx}>
       <div className="max-w-md mx-auto min-h-svh relative bg-white">
         {screen !== 'setup' && <TopNav />}
-        <div className={screen === 'setup' ? '' : screen === 'home' ? 'pt-20' : 'pt-14'}>
+        <div className={screen === 'setup' ? '' : (screen === 'home' && homeLoading) ? '' : screen === 'home' ? 'pt-20' : 'pt-14'}>
           {renderScreen()}
         </div>
 

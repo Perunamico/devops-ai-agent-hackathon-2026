@@ -1,19 +1,26 @@
 import { useEffect, useState } from 'react';
 import { getReviewItems, approveMemory } from '../api';
+import { useApp } from '../App';
 import type { ReviewItem } from '../types';
 
 export default function ReviewScreen() {
+  const { setReviewCount } = useApp();
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     getReviewItems()
-      .then(setItems)
+      .then((data) => {
+        setItems(data);
+        setReviewCount(data.length);
+      })
       .finally(() => setLoading(false));
   }, []);
 
   async function handleAction(id: string, action: 'approve' | 'reject') {
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    const newItems = items.filter((i) => i.id !== id);
+    setItems(newItems);
+    setReviewCount(newItems.length);
     try {
       await approveMemory(id, action);
     } catch {
