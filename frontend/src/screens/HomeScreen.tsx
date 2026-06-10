@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
 import { sendChat, getReviewItems } from '../api';
 
@@ -20,29 +20,111 @@ const AVAILABLE_ANIMS: AnimName[] = [
   'shake',
 ];
 
-// hand → interlude → hand → interlude ... のサイクル
-// interlude 内で shake の連続を避ける
+const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
+
 function pickNextAnim(current: AnimName, lastInterlude: AnimName | null): AnimName {
-  if (current !== 'hand') {
-    return 'hand';
-  }
+  if (current !== 'hand') return 'hand';
   const candidates = INTERLUDE_ANIMS.filter(
     (a) => !(ANIM_CONFIG[a].noConsecutive && a === lastInterlude)
   );
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-// webp バイナリから計測した実際の1ループ尺 (ms)
-const ANIM_DURATIONS: Record<AnimName, number> = {
-  blink:        378,
-  hand:         2058,
-  hand_stretch: 2058,
-  stretch:      2058,
-  shake:        4402,
-};
+// --- ImageDecoder を使ったフレーム事前デコード + canvas アニメーション ---
+// blob.stream() は一度しか読めないため、全フレームを ImageBitmap として
+// 起動時にメモリへ展開しておく。ループはビットマップ配列の繰り返しで実現。
+// frameCache はモジュールレベルで保持することで、画面遷移後の再マウント時に
+// 再デコードを省略し、ローディング画面を出さずに済む。
+const frameCache: Partial<Record<AnimName, DecodedFrame[]>> = {};
 
-// hand 以外のアニメーション（hand の後にランダムで1回挟む）
-const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
+interface DecodedFrame {
+  bitmap: ImageBitmap;
+  durationMs: number;
+}
+
+interface AnimPlayer {
+  start(minLoops: number, onDone: () => void): void;
+  stop(): void;
+}
+
+function createPlayer(canvas: HTMLCanvasElement, frames: DecodedFrame[]): AnimPlayer {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  const ctx = canvas.getContext('2d')!;
+
+  if (frames.length > 0) {
+    canvas.width = frames[0].bitmap.width;
+    canvas.height = frames[0].bitmap.height;
+  }
+
+  function stop() {
+    stopped = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+  }
+
+  function step(fi: number, loops: number, minLoops: number, onDone: () => void): void {
+    if (stopped || frames.length === 0) return;
+
+    const { bitmap, durationMs } = frames[fi];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0);
+
+    const nextFi = fi + 1;
+    if (nextFi >= frames.length) {
+      // 1ループ完了
+      const nextLoops = loops + 1;
+      if (nextLoops >= minLoops) {
+        timer = setTimeout(onDone, durationMs);
+      } else {
+        timer = setTimeout(() => step(0, nextLoops, minLoops, onDone), durationMs);
+      }
+    } else {
+      timer = setTimeout(() => step(nextFi, loops, minLoops, onDone), durationMs);
+    }
+  }
+
+  return {
+    start(minLoops, onDone) {
+      stop();
+      stopped = false;
+      step(0, 0, minLoops, onDone);
+    },
+    stop,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function decodeAllFrames(name: AnimName): Promise<DecodedFrame[]> {
+  const res = await fetch(`/webp/${name}.webp`);
+  const blob = await res.blob();
+  // ArrayBuffer で渡すと全データが即座に利用可能になり、任意フレームへのシークが可能
+  const buffer = await blob.arrayBuffer();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const decoder = new (window as any).ImageDecoder({ data: buffer, type: 'image/webp' });
+  await decoder.tracks.ready;
+
+  const frameCount: number = decoder.tracks.selectedTrack.frameCount;
+  const frames: DecodedFrame[] = [];
+
+  for (let i = 0; i < frameCount; i++) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: { image: any } = await decoder.decode({ frameIndex: i });
+    const frame = result.image;
+    // マイクロ秒 → ミリ秒。WebP の ANMF フレーム遅延値そのまま使用。
+    const durationMs: number = (frame.duration ?? 100000) / 1000;
+    // VideoFrame → ImageBitmap の変換。
+    // createImageBitmap(VideoFrame) は実装依存があるため OffscreenCanvas を経由する。
+    const offscreen = new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
+    offscreen.getContext('2d')!.drawImage(frame, 0, 0);
+    frame.close();
+    const bitmap = await createImageBitmap(offscreen);
+    frames.push({ bitmap, durationMs });
+  }
+
+  decoder.close();
+  return frames;
+}
 
 declare global {
   interface Window {
@@ -82,61 +164,88 @@ declare global {
 
 
 export default function HomeScreen() {
-  const { pet, setScreen } = useApp();
+  const { pet, setScreen, setHomeLoading, setReviewCount } = useApp();
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [petBubble, setPetBubble] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
-  const [reviewCount, setReviewCount] = useState(0);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const [currentAnim, setCurrentAnim] = useState<AnimName>('hand');
-  const [animKeys, setAnimKeys] = useState<Record<AnimName, number>>(
-    () => Object.fromEntries(AVAILABLE_ANIMS.map((n) => [n, 0])) as Record<AnimName, number>
-  );
-  const loopCountRef = useRef(0);
   const lastAnimRef = useRef<AnimName | null>(null);
-  const nextAnimRef = useRef<AnimName | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const canvasRefs = useRef<Partial<Record<AnimName, HTMLCanvasElement>>>({});
+  const playersRef = useRef<Partial<Record<AnimName, AnimPlayer>>>({});
+  const allFramesRef = useRef<Partial<Record<AnimName, DecodedFrame[]>>>({});
+  const [playersReady, setPlayersReady] = useState(false);
+  const [useImgFallback, setUseImgFallback] = useState(false);
+
+  // ローディング状態を App（TopNav）に伝える
+  useEffect(() => {
+    const loading = !playersReady && !useImgFallback;
+    setHomeLoading(loading);
+    return () => setHomeLoading(false);
+  }, [playersReady, useImgFallback, setHomeLoading]);
 
   useEffect(() => {
     getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
   }, []);
 
-  // currentAnim が切り替わった瞬間に次のアニメーションを選んでキーを上げる。
-  // 次の <img> は opacity:0 のままデコードが進み、切り替え時は opacity フリップのみになる。
+  // 起動時に全アニメーションのフレームをデコードしてプレイヤーを生成
+  // frameCache にあれば再デコードを省略し、即座にプレイヤーを生成する
   useEffect(() => {
-    if (currentAnim !== 'hand') {
-      lastAnimRef.current = currentAnim;
+    if (!('ImageDecoder' in window)) {
+      setUseImgFallback(true);
+      return;
     }
-    const next = pickNextAnim(currentAnim, lastAnimRef.current);
-    nextAnimRef.current = next;
-    setAnimKeys((prev) => ({ ...prev, [next]: (prev[next] ?? 0) + 1 }));
-  }, [currentAnim]);
 
-  const scheduleLoop = useCallback((anim: AnimName, key: number) => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    const duration = ANIM_DURATIONS[anim];
-    timerRef.current = setTimeout(() => {
-      loopCountRef.current += 1;
-      if (loopCountRef.current < ANIM_CONFIG[anim].minLoops) {
-        setAnimKeys((prev) => ({ ...prev, [anim]: key + 1 }));
-      } else {
-        loopCountRef.current = 0;
-        const next = nextAnimRef.current ?? pickNextAnim(anim, lastAnimRef.current);
-        setCurrentAnim(next);
-        // キーは prepareNext effect で既に上げてある — ここでは上げない
+    let cancelled = false;
+
+    (async () => {
+      try {
+        for (const name of AVAILABLE_ANIMS) {
+          if (cancelled) break;
+
+          let frames = frameCache[name];
+          if (!frames) {
+            frames = await decodeAllFrames(name);
+            if (cancelled) break;
+            frameCache[name] = frames;
+          }
+
+          allFramesRef.current[name] = frames;
+          const canvas = canvasRefs.current[name];
+          if (canvas) {
+            playersRef.current[name] = createPlayer(canvas, frames);
+          }
+        }
+        if (!cancelled) setPlayersReady(true);
+      } catch (err) {
+        console.error('[HomeScreen] animation init failed, falling back to <img>:', err);
+        if (!cancelled) setUseImgFallback(true);
       }
-    }, duration);
+    })();
+
+    return () => {
+      cancelled = true;
+      // プレイヤーのみ停止。ImageBitmap は frameCache に残すため close しない。
+      Object.values(playersRef.current).forEach((p) => p?.stop());
+    };
   }, []);
 
-  const currentKey = animKeys[currentAnim] ?? 0;
+  // currentAnim が変わるたびに対応するプレイヤーを起動
   useEffect(() => {
-    scheduleLoop(currentAnim, currentKey);
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, [currentAnim, currentKey, scheduleLoop]);
+    if (!playersReady) return;
+    const player = playersRef.current[currentAnim];
+    if (!player) return;
+
+    player.start(ANIM_CONFIG[currentAnim].minLoops, () => {
+      if (currentAnim !== 'hand') lastAnimRef.current = currentAnim;
+      const next = pickNextAnim(currentAnim, lastAnimRef.current);
+      setCurrentAnim(next);
+    });
+
+    return () => player.stop();
+  }, [currentAnim, playersReady]);
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -188,41 +297,60 @@ export default function HomeScreen() {
     (window.SpeechRecognition || window.webkitSpeechRecognition)
   );
 
+  const isLoading = !playersReady && !useImgFallback;
+
   const bubbleText = petBubble ?? `おはよう！${pet?.name ?? 'ペット'}だよ！`;
 
+  const animStyle = (name: AnimName): React.CSSProperties => ({
+    opacity: name === currentAnim ? 1 : 0,
+    height: '70vh',
+    width: 'auto',
+    left: '50%',
+    top: '50%',
+    transform: 'translateX(-50%) translateY(-55%)',
+    position: 'absolute',
+  });
+
   return (
-    <div className="flex flex-col h-[calc(100dvh-5rem)] bg-white">
-      {/* レビューバナー */}
-      {reviewCount > 0 && (
-        <button
-          onClick={() => setScreen('review')}
-          className="mx-4 mt-3 flex-shrink-0 bg-amber-50 rounded-xl px-4 py-2 text-xs text-amber-800 flex items-center justify-between"
-        >
-          <span>🔔 確認が必要な記憶が {reviewCount} 件あります</span>
-          <span className="text-amber-500">→</span>
-        </button>
+    // isLoading 中は h-svh（ナビなし全画面）、完了後は通常高さ
+    <div className={`flex flex-col relative bg-white ${isLoading ? 'h-svh' : 'h-[calc(100dvh-5rem)]'}`}>
+
+      {/* ローディング中: fixed で全画面を覆い TopNav も含めて完全に隠す。
+          canvas は DOM に残したまま ref を確保し、バックグラウンドでデコードを続ける。 */}
+      {isLoading && (
+        <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center gap-4">
+          <span className="w-14 h-14 rounded-full border-4 border-violet-200 border-t-violet-500 animate-spin" />
+          <p className="text-sm text-gray-400">読み込み中...</p>
+        </div>
       )}
 
-      {/* アニメーション */}
+      {/* アニメーション: canvas は常に DOM に存在させて ref を確保 */}
       <div className="flex-1 min-h-0 relative overflow-visible">
-        {AVAILABLE_ANIMS.map((name) => (
-          <img
-            key={`${name}-${animKeys[name] ?? 0}`}
-            src={`/webp/${name}.webp`}
-            alt=""
-            className="absolute"
-            style={{
-              opacity: name === currentAnim ? 1 : 0,
-              height: '70vh',
-              width: 'auto',
-              left: '50%',
-              top: '50%',
-              transform: 'translateX(-50%) translateY(-55%)',
-            }}
-          />
-        ))}
+        {useImgFallback
+          ? /* ImageDecoder 非対応ブラウザ: img で WebP をそのまま表示 */
+            AVAILABLE_ANIMS.map((name) => (
+              <img
+                key={name}
+                src={`/webp/${name}.webp`}
+                alt=""
+                className="absolute"
+                style={animStyle(name)}
+              />
+            ))
+          : /* ImageDecoder 対応ブラウザ: 事前デコード済みフレームを canvas に描画 */
+            AVAILABLE_ANIMS.map((name) => (
+              <canvas
+                key={name}
+                ref={(el) => { if (el) canvasRefs.current[name] = el; }}
+                className="absolute"
+                style={animStyle(name)}
+              />
+            ))
+        }
       </div>
 
+      {/* 吹き出し・入力エリアはローディング完了後のみ表示 */}
+      {!isLoading && <>
       {/* 吹き出し */}
       <div className="relative mx-6 mb-3 flex-shrink-0">
         <img src="/icons/flame.png" className="w-full" alt="" />
@@ -288,6 +416,7 @@ export default function HomeScreen() {
           </button>
         </form>
       </div>
+      </>}
     </div>
   );
 }
