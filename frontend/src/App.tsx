@@ -1,3 +1,5 @@
+'use client';
+
 import { createContext, useContext, useState } from 'react';
 import type { PetResponse } from './types';
 import SetupScreen from './screens/SetupScreen';
@@ -75,7 +77,7 @@ function TopNav() {
           key={item.screen}
           onClick={() => {
             if (item.screen === 'petexchange') setExchangeSetupStep('mic');
-            else if (item.screen === 'exchange') setScreen('petexchange');
+            else if (item.screen === 'exchange') setScreen('exchange');
             else setScreen(item.screen);
           }}
           className="flex-1 flex flex-col items-center justify-center gap-1 bg-white rounded-2xl transition-all"
@@ -89,7 +91,9 @@ function TopNav() {
 }
 
 export default function App() {
-  const hasQrToken = new URLSearchParams(window.location.search).has('exchangeToken');
+  const hasQrToken = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).has('exchangeToken')
+    : false;
   const [screen, setScreen] = useState<Screen>(hasQrToken ? 'exchange' : 'setup');
   const [pet, setPet] = useState<PetResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);

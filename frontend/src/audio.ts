@@ -10,25 +10,13 @@ const BASE = 13;             // データシンボル値範囲 0–12
 const VERSION = 0;
 const DATA_SYMBOLS_LEN = 14; // VERSION(1) + PAYLOAD(11) + CHECKSUM(2)
 
-// タイミング範囲 (ms)
-const DATA_DURATION_MIN = 90;
-const DATA_DURATION_MAX = 130;
-const START_DURATION_MIN = 140;
-const START_DURATION_MAX = 170;
-const END_DURATION_MIN = 160;
-const END_DURATION_MAX = 190;
 const GAP_MIN = 30;
-const GAP_MAX = 50;
 
 // 受信パラメータ
 const FFT_SIZE = 8192;
 const MIN_STABLE_FRAMES = 2;  // この連続フレーム数で安定判定 (≈33ms @60fps)
 const AMP_THRESHOLD = 50;
 const FREQ_TOLERANCE_HZ = 80; // 最近傍スナップ許容幅
-
-function rand(min: number, max: number): number {
-  return Math.random() * (max - min) + min;
-}
 
 // ---- チェックサム ----
 

@@ -55,6 +55,15 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AI Pet API", version="2.0.0", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def strip_hosting_api_prefix(request, call_next):
+    if request.scope["path"].startswith("/api/"):
+        request.scope["path"] = request.scope["path"][4:]
+    elif request.scope["path"] == "/api":
+        request.scope["path"] = "/"
+    return await call_next(request)
+
+
 # ---- Dependencies ----
 
 def get_firestore() -> FirestoreService:

@@ -1,7 +1,49 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
 import { submitInput, getReviewItems } from '../api';
 import type { MemoryClassifyResult } from '../types';
+
+type AnimName = 'hand' | 'stretch' | 'hand_stretch' | 'blink' | 'shake';
+
+const ANIM_CONFIG: Record<AnimName, { minLoops: number; noConsecutive: boolean }> = {
+  hand:         { minLoops: 5, noConsecutive: false },
+  stretch:      { minLoops: 1, noConsecutive: false },
+  hand_stretch: { minLoops: 1, noConsecutive: false },
+  blink:        { minLoops: 1, noConsecutive: true },
+  shake:        { minLoops: 1, noConsecutive: true },
+};
+
+const AVAILABLE_ANIMS: AnimName[] = [
+  'hand',
+  'stretch',
+  'hand_stretch',
+  // 'blink',
+  'shake',
+];
+
+// hand → interlude → hand → interlude ... のサイクル
+// interlude 内で shake の連続を避ける
+function pickNextAnim(current: AnimName, lastInterlude: AnimName | null): AnimName {
+  if (current !== 'hand') {
+    return 'hand';
+  }
+  const candidates = INTERLUDE_ANIMS.filter(
+    (a) => !(ANIM_CONFIG[a].noConsecutive && a === lastInterlude)
+  );
+  return candidates[Math.floor(Math.random() * candidates.length)];
+}
+
+// webp バイナリから計測した実際の1ループ尺 (ms)
+const ANIM_DURATIONS: Record<AnimName, number> = {
+  blink:        378,
+  hand:         2058,
+  hand_stretch: 2058,
+  stretch:      2058,
+  shake:        4402,
+};
+
+// hand 以外のアニメーション（hand の後にランダムで1回挟む）
+const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
 
 declare global {
   interface Window {
@@ -59,39 +101,61 @@ function buildPetReply(result: MemoryClassifyResult, petName: string): string {
 }
 
 export default function HomeScreen() {
-  const { pet, setScreen, exchangeSetupStep } = useApp();
+  const { pet, setScreen } = useApp();
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [petBubble, setPetBubble] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const normalVideoRef = useRef<HTMLVideoElement>(null);
-  const blinkVideoRef = useRef<HTMLVideoElement>(null);
-  const [isBlink, setIsBlink] = useState(false);
-  const normalPlayCountRef = useRef(0);
+
+  const [currentAnim, setCurrentAnim] = useState<AnimName>('hand');
+  const [animKeys, setAnimKeys] = useState<Record<AnimName, number>>(
+    () => Object.fromEntries(AVAILABLE_ANIMS.map((n) => [n, 0])) as Record<AnimName, number>
+  );
+  const loopCountRef = useRef(0);
+  const lastAnimRef = useRef<AnimName | null>(null);
+  const nextAnimRef = useRef<AnimName | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
   }, []);
 
-  function handleVideoEnded() {
-    if (isBlink) {
-      setIsBlink(false);
-      normalVideoRef.current?.play().catch(() => {});
-    } else {
-      normalPlayCountRef.current += 1;
-      if (normalPlayCountRef.current % 2 === 0) {
-        setIsBlink(true);
-        if (blinkVideoRef.current) {
-          blinkVideoRef.current.currentTime = 0;
-          blinkVideoRef.current.play().catch(() => {});
-        }
-      } else {
-        normalVideoRef.current?.play().catch(() => {});
-      }
+  // currentAnim が切り替わった瞬間に次のアニメーションを選んでキーを上げる。
+  // 次の <img> は opacity:0 のままデコードが進み、切り替え時は opacity フリップのみになる。
+  useEffect(() => {
+    if (currentAnim !== 'hand') {
+      lastAnimRef.current = currentAnim;
     }
-  }
+    const next = pickNextAnim(currentAnim, lastAnimRef.current);
+    nextAnimRef.current = next;
+    setAnimKeys((prev) => ({ ...prev, [next]: (prev[next] ?? 0) + 1 }));
+  }, [currentAnim]);
+
+  const scheduleLoop = useCallback((anim: AnimName, key: number) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    const duration = ANIM_DURATIONS[anim];
+    timerRef.current = setTimeout(() => {
+      loopCountRef.current += 1;
+      if (loopCountRef.current < ANIM_CONFIG[anim].minLoops) {
+        setAnimKeys((prev) => ({ ...prev, [anim]: key + 1 }));
+      } else {
+        loopCountRef.current = 0;
+        const next = nextAnimRef.current ?? pickNextAnim(anim, lastAnimRef.current);
+        setCurrentAnim(next);
+        // キーは prepareNext effect で既に上げてある — ここでは上げない
+      }
+    }, duration);
+  }, []);
+
+  const currentKey = animKeys[currentAnim] ?? 0;
+  useEffect(() => {
+    scheduleLoop(currentAnim, currentKey);
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [currentAnim, currentKey, scheduleLoop]);
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -157,29 +221,24 @@ export default function HomeScreen() {
         </button>
       )}
 
-      {/* 動画: flame/input に被らない flex-1 領域に収める */}
-      <div className="flex-1 min-h-0 relative">
-        <video
-          ref={normalVideoRef}
-          src="/movie/normal.mp4"
-          autoPlay
-          muted
-          playsInline
-          preload="auto"
-          onEnded={handleVideoEnded}
-          style={{ opacity: isBlink ? 0 : 1 }}
-          className="absolute inset-0 w-full h-full object-contain"
-        />
-        <video
-          ref={blinkVideoRef}
-          src="/movie/blink.mp4"
-          muted
-          playsInline
-          preload="auto"
-          onEnded={handleVideoEnded}
-          style={{ opacity: isBlink ? 1 : 0 }}
-          className="absolute inset-0 w-full h-full object-contain"
-        />
+      {/* アニメーション */}
+      <div className="flex-1 min-h-0 relative overflow-visible">
+        {AVAILABLE_ANIMS.map((name) => (
+          <img
+            key={`${name}-${animKeys[name] ?? 0}`}
+            src={`/webp/${name}.webp`}
+            alt=""
+            className="absolute"
+            style={{
+              opacity: name === currentAnim ? 1 : 0,
+              height: '70vh',
+              width: 'auto',
+              left: '50%',
+              top: '50%',
+              transform: 'translateX(-50%) translateY(-55%)',
+            }}
+          />
+        ))}
       </div>
 
       {/* 吹き出し */}

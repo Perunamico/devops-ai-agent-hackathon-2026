@@ -97,22 +97,22 @@ class FirestoreService:
     # ---- memories ----
 
     def upsert_private_memory(self, user_id: str, data: dict) -> None:
-        existing = self._get(f"users/{user_id}", "private_memory") or {}
+        existing = self._get(f"users/{user_id}/memories", "private") or {}
         merged = _merge_memory(existing, data)
         merged["updated_at"] = self._now().isoformat()
-        self._set(f"users/{user_id}", "private_memory", merged)
+        self._set(f"users/{user_id}/memories", "private", merged)
 
     def upsert_public_memory(self, user_id: str, data: dict) -> None:
-        existing = self._get(f"users/{user_id}", "public_memory") or {}
+        existing = self._get(f"users/{user_id}/memories", "public") or {}
         merged = _merge_memory(existing, data)
         merged["updated_at"] = self._now().isoformat()
-        self._set(f"users/{user_id}", "public_memory", merged)
+        self._set(f"users/{user_id}/memories", "public", merged)
 
     def get_public_memory(self, user_id: str) -> dict | None:
-        return self._get(f"users/{user_id}", "public_memory")
+        return self._get(f"users/{user_id}/memories", "public")
 
     def get_private_memory(self, user_id: str) -> dict | None:
-        return self._get(f"users/{user_id}", "private_memory")
+        return self._get(f"users/{user_id}/memories", "private")
 
     def add_blocked_memory(self, user_id: str, data: dict) -> str:
         data["created_at"] = self._now().isoformat()
