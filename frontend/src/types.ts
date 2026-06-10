@@ -18,6 +18,10 @@ export interface UserInputCreate {
   content: string;
 }
 
+export interface ChatRequest {
+  message: string;
+}
+
 export interface MemoryClassifyResult {
   category: 'private' | 'public' | 'blocked' | 'review_required';
   interests: string[];
@@ -36,6 +40,26 @@ export interface PublicMemoryResponse {
   public_conversation_hooks: string[];
   shareable_interests: string[];
   updated_at: string;
+}
+
+export type ChatIntent =
+  | 'small_talk'
+  | 'emotion_support'
+  | 'interest_discovery'
+  | 'memory_update'
+  | 'safety_block'
+  | 'review_required';
+
+export interface ChatUiHint {
+  emotion: 'happy' | 'comfort' | 'curious' | 'careful' | 'neutral';
+  animation: 'hand' | 'stretch' | 'hand_stretch' | 'blink' | 'shake';
+}
+
+export interface ChatResponse {
+  reply: string;
+  intent: ChatIntent;
+  memory: MemoryClassifyResult | null;
+  ui_hint: ChatUiHint;
 }
 
 export interface ReviewItem {

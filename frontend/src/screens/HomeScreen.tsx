@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
-import { submitInput, getReviewItems } from '../api';
-import type { MemoryClassifyResult } from '../types';
+import { sendChat, getReviewItems } from '../api';
 
 type AnimName = 'hand' | 'stretch' | 'hand_stretch' | 'blink' | 'shake';
 
@@ -82,24 +81,6 @@ declare global {
 }
 
 
-function buildPetReply(result: MemoryClassifyResult, petName: string): string {
-  switch (result.category) {
-    case 'public':
-      if (result.interests.length > 0) {
-        return `わん！「${result.interests[0]}」のこと、みんなに教えていいよ！`;
-      }
-      return `わん！それ、素敵な話だね！みんなに教えてあげる！`;
-    case 'private':
-      return `うん...${petName}だけのひみつにしておくね。`;
-    case 'blocked':
-      return `それはないしょにしとくね！大切なことだから守るよ。`;
-    case 'review_required':
-      return `んー、これって共有してもいいかな？確認画面で教えてね！`;
-    default:
-      return `うん、わかった！`;
-  }
-}
-
 export default function HomeScreen() {
   const { pet, setScreen } = useApp();
   const [content, setContent] = useState('');
@@ -159,13 +140,14 @@ export default function HomeScreen() {
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
-    if (!content.trim() || submitting) return;
+    const message = content.trim();
+    if (!message || submitting) return;
     setSubmitting(true);
     try {
-      const result = await submitInput({ input_type: 'chat', content });
-      setPetBubble(buildPetReply(result, pet?.name ?? 'ペット'));
+      const result = await sendChat({ message });
+      setPetBubble(result.reply);
       setContent('');
-      if (result.category === 'review_required') {
+      if (result.memory?.category === 'review_required') {
         getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
       }
     } catch {
@@ -285,6 +267,25 @@ export default function HomeScreen() {
               </svg>
             </button>
           )}
+          <button
+            type="submit"
+            disabled={!content.trim() || submitting}
+            className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-violet-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            aria-label="送信"
+          >
+            {submitting ? (
+              <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="white"
+                className="w-6 h-6"
+              >
+                <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z" />
+              </svg>
+            )}
+          </button>
         </form>
       </div>
     </div>

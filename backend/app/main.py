@@ -5,10 +5,12 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Header, HTTPException
 
 from app.agents.encounter_agent import EncounterAgent
+from app.agents.conversation_agent import ConversationAgent
 from app.agents.memory_agent import MemoryAgent
 from app.agents.pet_persona_agent import PetPersonaAgent
 from app.agents.topic_agent import TopicAgent
 from app.config import Settings, get_settings
+from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.encounter import (
     ExchangeTokenResponse,
     ResolveExchangeRequest,
@@ -162,6 +164,17 @@ def submit_input(
 ):
     agent = MemoryAgent(ai, db)
     return agent.classify_and_store(uid, body)
+
+
+@app.post("/chat", response_model=ChatResponse)
+def chat(
+    body: ChatRequest,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+):
+    agent = ConversationAgent(ai, db)
+    return agent.chat(uid, body.message)
 
 
 @app.get("/memories/public", response_model=PublicMemoryResponse)

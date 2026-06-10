@@ -128,7 +128,7 @@ class MemoryAgent:
         )
         try:
             raw = self._ai.generate_json(prompt, temperature=0.2)
-            return MemoryClassifyResult(**raw)
+            return MemoryClassifyResult(**_normalize_memory_result(raw))
         except Exception as e:
             logger.error("LLM1 classification failed, falling back to private: %s", e)
             return MemoryClassifyResult(category="private")
@@ -150,3 +150,16 @@ class MemoryAgent:
                 })
         except Exception as e:
             logger.error("LLM4 memory update failed: %s", e)
+
+
+def _normalize_memory_result(raw: dict) -> dict:
+    return {
+        "category": raw.get("category") or "private",
+        "interests": raw.get("interests") or [],
+        "values": raw.get("values") or [],
+        "recent_topics": raw.get("recent_topics") or [],
+        "conversation_style_notes": raw.get("conversation_style_notes") or "",
+        "safe_summary": raw.get("safe_summary") or "",
+        "blocked_reason": raw.get("blocked_reason") or "",
+        "review_reason": raw.get("review_reason") or "",
+    }
