@@ -48,7 +48,8 @@ export default function ExchangeScreen() {
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const msgPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const playingRef = useRef(false);
-  const resolvedRef = useRef(false); // 受信済みフラグ（二重処理防止）
+  const receivedRef = useRef(false); // 相手トークン受信済みフラグ（リスニング停止用）
+  const resolvedRef = useRef(false); // 双方照合完了フラグ（送信ループ停止用）
   const exchangingVideoRef = useRef<HTMLVideoElement>(null);
 
   // 交流探索フェーズが終わったらマイクを確実にOFF
@@ -75,6 +76,7 @@ export default function ExchangeScreen() {
     if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
     if (msgPollRef.current) { clearInterval(msgPollRef.current); msgPollRef.current = null; }
     playingRef.current = false;
+    receivedRef.current = false;
     resolvedRef.current = false;
     setShowQR(false);
     setQrLoading(false);
@@ -134,9 +136,10 @@ export default function ExchangeScreen() {
     const listener = createBarkListener(
       data.payload_raw,
       async (detectedPayload) => {
-        if (resolvedRef.current) return;
-        resolvedRef.current = true;
+        if (receivedRef.current) return;
+        receivedRef.current = true;
         listenerRef.current?.stop();
+        listenerRef.current = null;
         setStep('resolving');
         await handleResolve(detectedPayload);
       },
@@ -147,6 +150,7 @@ export default function ExchangeScreen() {
 
     const MAX_ATTEMPTS = 6;
     playingRef.current = true;
+    receivedRef.current = false;
 
     // 最大6回: サイクル先頭で映像リセット → 1秒待機 → 1秒鳴く → 0.5秒待機
     for (let attempt = 0; attempt < MAX_ATTEMPTS && playingRef.current && !resolvedRef.current; attempt++) {
@@ -176,7 +180,10 @@ export default function ExchangeScreen() {
       listenerRef.current?.stop();
       listenerRef.current = null;
       playingRef.current = false;
-      setStep('failed');
+      if (!receivedRef.current) {
+        setStep('failed');
+      }
+      // receivedRef=true なら step は 'resolving'/'waiting' のまま → ポーリング継続
     }
   }
 
@@ -184,6 +191,7 @@ export default function ExchangeScreen() {
     try {
       const res = await resolveExchange(payload);
       if (res.status === 'matched' && res.session_id) {
+        resolvedRef.current = true;
         await loadSession(res.session_id);
       } else if (res.status === 'waiting' && res.pending_id) {
         startPolling(res.pending_id);
@@ -210,6 +218,7 @@ export default function ExchangeScreen() {
       try {
         const status = await getMatchStatus(pendingId);
         if (status.status === 'matched' && status.session_id) {
+          resolvedRef.current = true;
           clearInterval(pollRef.current!);
           await loadSession(status.session_id);
         }
@@ -270,6 +279,7 @@ export default function ExchangeScreen() {
     listenerRef.current?.stop();
     listenerRef.current = null;
     playingRef.current = false;
+    receivedRef.current = false;
     resolvedRef.current = false;
     setStep('exchanging');
     setShowQR(true);
