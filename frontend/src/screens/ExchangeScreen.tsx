@@ -2,10 +2,11 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { useApp } from '../App';
 import { issueToken, resolveExchange, getMatchStatus, getSession, endSession, pollToken, scanQrToken } from '../api';
-import { encodePayload, playSymbols, createBarkListener } from '../audio';
+import { encodePayload, playSymbols, createBarkListener, unlockAudioOutput } from '../audio';
 import type { ExchangeTokenResponse, SessionResponse, ResolveStatus } from '../types';
 
 type ExchangeStep =
+  | 'role_select'
   | 'exchanging'     // 鳴き声送受信メイン
   | 'resolving'      // サーバー照合中
   | 'waiting'        // 相手待ちポーリング
@@ -22,6 +23,8 @@ type ErrorKind =
   | 'not_found'
   | 'generic';
 
+type AudioRole = 'talk_first' | 'listen_first';
+
 const ERROR_MESSAGES: Record<ErrorKind, string> = {
   mic_denied: 'マイクを許可すると交流できます',
   expired: 'もう一度交流を開始してください（期限切れ）',
@@ -33,15 +36,20 @@ const ERROR_MESSAGES: Record<ErrorKind, string> = {
 
 const POLL_INTERVAL_MS = 2000;
 const WAIT_TIMEOUT_MS = 90000;
+const LISTEN_SLOT_MS = 12500;
+const MAX_DISCOVERY_SLOTS = 12;
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 export default function ExchangeScreen() {
-  const { setScreen, setSessionId, setAnalysisId } = useApp();
-  const [step, setStep] = useState<ExchangeStep>('exchanging');
+  const { sessionId, setScreen, setSessionId, setAnalysisId } = useApp();
+  const [step, setStep] = useState<ExchangeStep>('role_select');
   const [errorKind, setErrorKind] = useState<ErrorKind>('generic');
   const [tokenData, setTokenData] = useState<ExchangeTokenResponse | null>(null);
   const [sessionData, setSessionData] = useState<SessionResponse | null>(null);
   const [showQR, setShowQR] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
+  const [waitingForPeer, setWaitingForPeer] = useState(false);
 
   const listenerRef = useRef<ReturnType<typeof createBarkListener> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -80,6 +88,7 @@ export default function ExchangeScreen() {
     resolvedRef.current = false;
     setShowQR(false);
     setQrLoading(false);
+    setWaitingForPeer(false);
   }, []);
 
   // コンポーネントアンマウント時にクリーンアップ
@@ -90,8 +99,11 @@ export default function ExchangeScreen() {
     const params = new URLSearchParams(window.location.search);
     const scannedToken = params.get('exchangeToken');
     if (!scannedToken) {
-      // 通常フロー: マウント時に鳴き声交換を自動開始
-      startVoiceExchange();
+      if (sessionId) {
+        loadSession(sessionId);
+        return;
+      }
+      setStep('role_select');
       return;
     }
     // URL パラメータを除去
@@ -115,7 +127,15 @@ export default function ExchangeScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function startVoiceExchange() {
+  async function startVoiceExchange(role: AudioRole) {
+    try {
+      await unlockAudioOutput();
+    } catch {
+      setErrorKind('generic');
+      setStep('error');
+      return;
+    }
+
     let data: ExchangeTokenResponse;
     try {
       data = await issueToken();
@@ -132,58 +152,89 @@ export default function ExchangeScreen() {
     await new Promise(r => setTimeout(r, 0));
 
     const symbols = encodePayload(data.payload_raw);
-
-    const listener = createBarkListener(
-      data.payload_raw,
-      async (detectedPayload) => {
-        if (receivedRef.current) return;
-        receivedRef.current = true;
-        listenerRef.current?.stop();
-        listenerRef.current = null;
-        setStep('resolving');
-        await handleResolve(detectedPayload);
-      },
-      () => {},
-    );
-    listenerRef.current = listener;
-    listener.start();
-
-    const MAX_ATTEMPTS = 6;
     playingRef.current = true;
     receivedRef.current = false;
 
-    // 最大6回: サイクル先頭で映像リセット → 1秒待機 → 1秒鳴く → 0.5秒待機
-    for (let attempt = 0; attempt < MAX_ATTEMPTS && playingRef.current && !resolvedRef.current; attempt++) {
-      // サイクル開始と同時に映像を先頭から再生（ループ全体と映像のタイミングが一致）
-      if (exchangingVideoRef.current) {
-        const video = exchangingVideoRef.current;
-        if (!video.currentSrc.endsWith('bark.mp4')) {
-          // failed 後のリトライ: normal.mp4 が残っているので再ロードしてから再生
-          video.src = '/movie/bark.mp4';
-          video.load();
-          await new Promise<void>(resolve => {
-            video.addEventListener('canplay', () => { video.play().catch(() => {}); resolve(); }, { once: true });
-          });
-        } else {
-          video.currentTime = 0;
-          video.play().catch(() => {});
-        }
-      }
-      await new Promise(r => setTimeout(r, 1000));
-      if (!playingRef.current || resolvedRef.current) break;
-      await playSymbols(symbols);
-      if (!playingRef.current || resolvedRef.current) break;
-      await new Promise(r => setTimeout(r, 500));
+    async function startListening() {
+      listenerRef.current?.stop();
+      const listener = createBarkListener(
+        data.payload_raw,
+        async (detectedPayload) => {
+          if (receivedRef.current) return;
+          receivedRef.current = true;
+          listenerRef.current?.stop();
+          listenerRef.current = null;
+          await handleResolve(detectedPayload);
+        },
+        () => {
+          playingRef.current = false;
+          setErrorKind('mic_denied');
+          setStep('error');
+        },
+      );
+      listenerRef.current = listener;
+      await listener.start();
     }
 
-    if (!resolvedRef.current && playingRef.current) {
+    function stopListening() {
       listenerRef.current?.stop();
       listenerRef.current = null;
+    }
+
+    const startedAt = Date.now();
+    let slot = 0;
+
+    // 半二重: 送信中は聞かず、受信中は鳴らさない。相手を拾った後は双方照合まで送信優先で鳴き続ける。
+    while (playingRef.current && !resolvedRef.current) {
+      if (!receivedRef.current && slot >= MAX_DISCOVERY_SLOTS) break;
+      if (receivedRef.current && Date.now() - startedAt > WAIT_TIMEOUT_MS) break;
+      const shouldTalk = receivedRef.current
+        || (role === 'talk_first' ? slot % 2 === 0 : slot % 2 === 1);
+
+      if (shouldTalk) {
+        stopListening();
+        if (exchangingVideoRef.current) {
+          const video = exchangingVideoRef.current;
+          if (!video.currentSrc.endsWith('bark.mp4')) {
+            video.src = '/movie/bark.mp4';
+            video.load();
+            await new Promise<void>(resolve => {
+              video.addEventListener('canplay', () => { video.play().catch(() => {}); resolve(); }, { once: true });
+            });
+          } else {
+            video.currentTime = 0;
+            video.play().catch(() => {});
+          }
+        }
+        await sleep(250);
+        if (!playingRef.current || resolvedRef.current) break;
+        try {
+          await playSymbols(symbols);
+        } catch {
+          playingRef.current = false;
+          setErrorKind('generic');
+          setStep('error');
+          break;
+        }
+      } else {
+        await startListening();
+        await sleep(LISTEN_SLOT_MS);
+        stopListening();
+      }
+      if (!playingRef.current || resolvedRef.current) break;
+      await sleep(250);
+      slot++;
+    }
+
+    stopListening();
+    if (!resolvedRef.current && playingRef.current) {
       playingRef.current = false;
       if (!receivedRef.current) {
         setStep('failed');
       }
-      // receivedRef=true なら step は 'resolving'/'waiting' のまま → ポーリング継続
+      if (receivedRef.current) {
+        setStep('failed');
+      }
     }
   }
 
@@ -192,6 +243,7 @@ export default function ExchangeScreen() {
       const res = await resolveExchange(payload);
       if (res.status === 'matched' && res.session_id) {
         resolvedRef.current = true;
+        setWaitingForPeer(false);
         await loadSession(res.session_id);
       } else if (res.status === 'waiting' && res.pending_id) {
         startPolling(res.pending_id);
@@ -207,11 +259,15 @@ export default function ExchangeScreen() {
   }
 
   function startPolling(pendingId: string) {
-    setStep('waiting');
+    setWaitingForPeer(true);
     const startAt = Date.now();
     pollRef.current = setInterval(async () => {
       if (Date.now() - startAt > WAIT_TIMEOUT_MS) {
         clearInterval(pollRef.current!);
+        pollRef.current = null;
+        playingRef.current = false;
+        listenerRef.current?.stop();
+        listenerRef.current = null;
         setStep('failed');
         return;
       }
@@ -220,6 +276,9 @@ export default function ExchangeScreen() {
         if (status.status === 'matched' && status.session_id) {
           resolvedRef.current = true;
           clearInterval(pollRef.current!);
+          pollRef.current = null;
+          playingRef.current = false;
+          setWaitingForPeer(false);
           await loadSession(status.session_id);
         }
       } catch {
@@ -262,6 +321,8 @@ export default function ExchangeScreen() {
     try {
       await endSession(sessionData.session_id);
     } catch {}
+    setSessionId(null);
+    setAnalysisId(null);
     setStep('session_ended');
     cleanup();
   }
@@ -270,8 +331,10 @@ export default function ExchangeScreen() {
     cleanup();
     setTokenData(null);
     setSessionData(null);
-    setStep('exchanging');
-    startVoiceExchange();
+    setSessionId(null);
+    setAnalysisId(null);
+    setWaitingForPeer(false);
+    setStep('role_select');
   }
 
   function handleQR() {
@@ -283,6 +346,7 @@ export default function ExchangeScreen() {
     resolvedRef.current = false;
     setStep('exchanging');
     setShowQR(true);
+    setWaitingForPeer(false);
     setQrLoading(true);
     setTokenData(null);
     issueToken().then(data => {
@@ -303,7 +367,8 @@ export default function ExchangeScreen() {
     setShowQR(false);
     setQrLoading(false);
     resolvedRef.current = false;
-    await startVoiceExchange();
+    setWaitingForPeer(false);
+    setStep('role_select');
   }
 
   function startQrPolling(tokenKey: string) {
@@ -330,10 +395,41 @@ export default function ExchangeScreen() {
 
   function handleGiveUp() {
     cleanup();
+    setSessionId(null);
+    setAnalysisId(null);
     setScreen('home');
   }
 
   // ---- UI ----
+
+  if (step === 'role_select') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[70vh] px-6 gap-5 text-center">
+        <div className="text-5xl">🎵</div>
+        <div className="space-y-2">
+          <h2 className="text-lg font-bold text-gray-900">鳴き声通信を始めます</h2>
+          <p className="text-sm text-gray-500">片方は先に鳴き、もう片方は先に聞いてください</p>
+        </div>
+        <div className="w-full space-y-3">
+          <button
+            onClick={() => startVoiceExchange('talk_first')}
+            className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
+          >
+            先に鳴く
+          </button>
+          <button
+            onClick={() => startVoiceExchange('listen_first')}
+            className="w-full border border-violet-300 text-violet-600 rounded-2xl py-4 font-bold text-lg"
+          >
+            先に聞く
+          </button>
+        </div>
+        <button onClick={handleQR} className="text-sm text-gray-400 py-2">
+          QRコードを使う
+        </button>
+      </div>
+    );
+  }
 
   if (step === 'exchanging' || step === 'failed') {
     return (
@@ -391,6 +487,12 @@ export default function ExchangeScreen() {
                   />
                 ))}
               </div>
+            </div>
+          )}
+          {waitingForPeer && !showQR && (
+            <div className="absolute inset-x-4 bottom-4 bg-white/95 border border-violet-100 rounded-2xl px-4 py-3 text-center shadow-sm">
+              <p className="text-sm font-bold text-violet-700">相手のペットを待っています</p>
+              <p className="text-xs text-violet-500 mt-1">こちらの鳴き声を相手に聞かせ続けてください</p>
             </div>
           )}
         </div>
@@ -481,8 +583,13 @@ export default function ExchangeScreen() {
         <div className="w-full aspect-square max-w-[240px] bg-gradient-to-br from-green-100 to-emerald-200 rounded-3xl flex items-center justify-center">
           <div className="text-center space-y-2">
             <div className="text-5xl">🤝</div>
-            <p className="text-xs text-green-600 font-medium">交流中！</p>
+            <p className="text-xs text-green-600 font-medium">交流できました</p>
           </div>
+        </div>
+
+        <div className="w-full bg-green-50 border border-green-100 rounded-2xl px-4 py-3 text-center">
+          <p className="text-base font-bold text-green-700">ペット友達とつながりました</p>
+          <p className="text-xs text-green-600 mt-1">交流セッションは継続中です</p>
         </div>
 
         {isEnded ? (
@@ -499,8 +606,9 @@ export default function ExchangeScreen() {
                 </p>
               </div>
             ) : (
-              <div className="bg-violet-50 rounded-2xl p-4 text-center">
-                <p className="text-sm text-violet-600 animate-pulse">共通点を探しています...</p>
+              <div className="bg-violet-50 rounded-2xl p-4 text-center space-y-1">
+                <p className="text-xs text-violet-500 font-medium">ペットからのメッセージ</p>
+                <p className="text-sm text-violet-600 animate-pulse">交流は完了しています。共通点を探しています...</p>
               </div>
             )}
 
@@ -552,7 +660,7 @@ export default function ExchangeScreen() {
           <p className="text-sm text-gray-500">{ERROR_MESSAGES[errorKind]}</p>
         </div>
         <button
-          onClick={() => { cleanup(); startVoiceExchange(); }}
+          onClick={() => { cleanup(); setStep('role_select'); }}
           className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold"
         >
           もう一度

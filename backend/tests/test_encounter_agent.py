@@ -1,10 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from app.agents.encounter_agent import EncounterAgent
-from app.schemas.encounter import JoinExchangeRequest
 
 
 def make_agent():
@@ -15,60 +12,55 @@ def make_agent():
         "conversation_hooks": ["最近聴いてる曲ある？"],
         "followup_suggestions": ["おすすめのアーティスト"],
         "new_interest_candidates": ["レコード"],
+        "common_message": "2人とも音楽が好きなんだね！",
     }
     db = MagicMock()
     token_svc = MagicMock()
     return EncounterAgent(ai, db, token_svc), db, token_svc
 
 
-def test_issue_token():
+def test_issue_token_saves_exchange_token():
     agent, db, token_svc = make_agent()
-    expires = datetime.now(timezone.utc) + timedelta(seconds=30)
-    token_svc.generate_exchange_token.return_value = ("abc123", expires)
-    token_svc.encode_token_to_frequencies.return_value = [17000, 18000, 19000]
+    token_svc.generate_payload_raw.return_value = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    token_svc.payload_to_token_key.return_value = "123456789AB"
 
     result = agent.issue_token("user1")
 
-    assert result.token == "abc123"
-    assert result.sound_frequencies == [17000, 18000, 19000]
+    assert result.payload_raw == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    assert result.token_key == "123456789AB"
+    assert result.qr_url.endswith("/exchange?exchangeToken=123456789AB")
     db.save_exchange_token.assert_called_once()
 
 
-def test_join_session_token_not_found():
-    agent, db, token_svc = make_agent()
-    db.get_exchange_token.return_value = None
-
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc:
-        agent.join_session("user2", JoinExchangeRequest(token="bad", exchange_method="qr_fallback"))
-    assert exc.value.status_code == 404
-
-
-def test_join_session_token_expired():
-    agent, db, token_svc = make_agent()
+def test_scan_qr_token_creates_session_and_returns_matched():
+    agent, db, _ = make_agent()
     db.get_exchange_token.return_value = {
-        "token": "abc",
-        "issued_by": "user1",
-        "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat(),
+        "token_key": "ABC",
+        "issued_by": "user-a",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+        "used": False,
+    }
+    db.create_exchange_session.return_value = "session-1"
+
+    with patch.object(agent, "_schedule_common_message_generation") as schedule:
+        result = agent.scan_qr_token("user-b", "ABC")
+
+    assert result.status == "matched"
+    assert result.session_id == "session-1"
+    db.mark_exchange_token_used_with_session.assert_called_once_with("ABC", "session-1")
+    schedule.assert_called_once_with("session-1", "user-a", "user-b")
+
+
+def test_scan_qr_token_rejects_same_user():
+    agent, db, _ = make_agent()
+    db.get_exchange_token.return_value = {
+        "token_key": "ABC",
+        "issued_by": "user-a",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+        "used": False,
     }
 
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc:
-        agent.join_session("user2", JoinExchangeRequest(token="abc", exchange_method="qr_fallback"))
-    assert exc.value.status_code == 410
+    result = agent.scan_qr_token("user-a", "ABC")
 
-
-def test_both_approve_triggers_llm2():
-    agent, db, token_svc = make_agent()
-    db.get_participants.return_value = [
-        {"user_id": "user1", "approved": True},
-        {"user_id": "user2", "approved": True},
-    ]
-    db.get_public_memory.return_value = {"safe_topic_tags": ["音楽"]}
-    db.get_blocked_topics.return_value = []
-    db.save_exchange_analysis.return_value = "analysis-id"
-
-    result = agent.approve_exchange("session1", "user2", True)
-
-    assert result["status"] == "confirmed"
-    db.save_exchange_analysis.assert_called_once()
+    assert result.status == "self"
+    db.create_exchange_session.assert_not_called()

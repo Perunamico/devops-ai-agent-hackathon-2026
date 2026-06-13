@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import random
+import threading
 import uuid
 from datetime import datetime, timezone
 
@@ -160,14 +161,18 @@ class EncounterAgent:
                 self._db.update_match_record(r.get("id", ""), {"session_id": session_id})
                 break
 
-        # LLM で共通メッセージを非同期生成
-        asyncio.get_event_loop().call_soon(
-            lambda: asyncio.ensure_future(
-                self._generate_common_message_async(session_id, token_owner_id, resolver_id)
-            )
-        )
+        self._schedule_common_message_generation(session_id, token_owner_id, resolver_id)
 
         return session_id
+
+    def _schedule_common_message_generation(self, session_id: str, user_a_id: str, user_b_id: str) -> None:
+        def run() -> None:
+            try:
+                asyncio.run(self._generate_common_message_async(session_id, user_a_id, user_b_id))
+            except Exception as e:
+                logger.error("Common message background task failed: %s", e)
+
+        threading.Thread(target=run, daemon=True).start()
 
     async def _generate_common_message_async(self, session_id: str, user_a_id: str, user_b_id: str) -> None:
         try:
@@ -240,11 +245,7 @@ class EncounterAgent:
         })
         self._db.mark_exchange_token_used_with_session(token_key, session_id)
 
-        asyncio.get_event_loop().call_soon(
-            lambda: asyncio.ensure_future(
-                self._generate_common_message_async(session_id, token_owner_id, user_id)
-            )
-        )
+        self._schedule_common_message_generation(session_id, token_owner_id, user_id)
         return ResolveExchangeResponse(status="matched", session_id=session_id)
 
     def get_match_status(self, pending_id: str, user_id: str) -> MatchStatusResponse:
