@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { useApp } from '../App';
 import { issueToken, resolveExchange, getMatchStatus, getSession, endSession, pollToken, scanQrToken } from '../api';
-import { encodePayload, playSymbols, createBarkListener } from '../audio';
+import { createBroadcastExchange } from '../audio';
 import type { ExchangeTokenResponse, SessionResponse, ResolveStatus } from '../types';
 
 type ExchangeStep =
@@ -43,7 +43,7 @@ export default function ExchangeScreen() {
   const [showQR, setShowQR] = useState(false);
   const [qrLoading, setQrLoading] = useState(false);
 
-  const listenerRef = useRef<ReturnType<typeof createBarkListener> | null>(null);
+  const listenerRef = useRef<ReturnType<typeof createBroadcastExchange> | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const msgPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -52,9 +52,10 @@ export default function ExchangeScreen() {
   const resolvedRef = useRef(false); // 双方照合完了フラグ（送信ループ停止用）
   const exchangingVideoRef = useRef<HTMLVideoElement>(null);
 
-  // 交流探索フェーズが終わったらマイクを確実にOFF
+  // 交流探索フェーズ（鳴き声の送受信中）が終わったらマイクを確実にOFF。
+  // resolving/waiting は受信後も双方成立まで鳴き続けるフェーズなので止めない。
   useEffect(() => {
-    if (step !== 'exchanging') {
+    if (step === 'session_active' || step === 'session_ended' || step === 'failed' || step === 'error') {
       listenerRef.current?.stop();
       listenerRef.current = null;
     }
@@ -131,60 +132,41 @@ export default function ExchangeScreen() {
     // React レンダリング待ち
     await new Promise(r => setTimeout(r, 0));
 
-    const symbols = encodePayload(data.payload_raw);
+    // failed 後のリトライ時は normal.mp4 が残っているので bark.mp4 を再ロードして再生
+    if (exchangingVideoRef.current) {
+      const video = exchangingVideoRef.current;
+      if (!video.currentSrc.endsWith('bark.mp4')) {
+        video.src = '/movie/bark.mp4';
+        video.load();
+        video.addEventListener('canplay', () => video.play().catch(() => {}), { once: true });
+      } else {
+        video.play().catch(() => {});
+      }
+    }
 
-    const listener = createBarkListener(
-      data.payload_raw,
-      async (detectedPayload) => {
-        if (receivedRef.current) return;
-        receivedRef.current = true;
-        listenerRef.current?.stop();
-        listenerRef.current = null;
-        setStep('resolving');
-        await handleResolve(detectedPayload);
-      },
-      () => {},
-    );
-    listenerRef.current = listener;
-    listener.start();
-
-    const MAX_ATTEMPTS = 6;
     playingRef.current = true;
     receivedRef.current = false;
 
-    // 最大6回: サイクル先頭で映像リセット → 1秒待機 → 1秒鳴く → 0.5秒待機
-    for (let attempt = 0; attempt < MAX_ATTEMPTS && playingRef.current && !resolvedRef.current; attempt++) {
-      // サイクル開始と同時に映像を先頭から再生（ループ全体と映像のタイミングが一致）
-      if (exchangingVideoRef.current) {
-        const video = exchangingVideoRef.current;
-        if (!video.currentSrc.endsWith('bark.mp4')) {
-          // failed 後のリトライ: normal.mp4 が残っているので再ロードしてから再生
-          video.src = '/movie/bark.mp4';
-          video.load();
-          await new Promise<void>(resolve => {
-            video.addEventListener('canplay', () => { video.play().catch(() => {}); resolve(); }, { once: true });
-          });
-        } else {
-          video.currentTime = 0;
-          video.play().catch(() => {});
-        }
-      }
-      await new Promise(r => setTimeout(r, 1000));
-      if (!playingRef.current || resolvedRef.current) break;
-      await playSymbols(symbols);
-      if (!playingRef.current || resolvedRef.current) break;
-      await new Promise(r => setTimeout(r, 500));
-    }
-
-    if (!resolvedRef.current && playingRef.current) {
-      listenerRef.current?.stop();
-      listenerRef.current = null;
-      playingRef.current = false;
-      if (!receivedRef.current) {
-        setStep('failed');
-      }
-      // receivedRef=true なら step は 'resolving'/'waiting' のまま → ポーリング継続
-    }
+    // 対称ランダムバックオフの半二重ループ（鳴く間は聞かない）を成立 or 上限まで実行
+    const exchange = createBroadcastExchange({
+      ownPayload: data.payload_raw,
+      onPeerReceived: async (detectedPayload) => {
+        if (receivedRef.current) return;
+        receivedRef.current = true;
+        setStep('resolving');
+        await handleResolve(detectedPayload);
+      },
+      onExhausted: (received) => {
+        playingRef.current = false;
+        listenerRef.current?.stop();
+        listenerRef.current = null;
+        // received=true なら step は 'resolving'/'waiting' のまま → ポーリング継続
+        if (!received) setStep('failed');
+      },
+      onError: () => {},
+    });
+    listenerRef.current = exchange;
+    exchange.start();
   }
 
   async function handleResolve(payload: number[]) {
@@ -192,6 +174,7 @@ export default function ExchangeScreen() {
       const res = await resolveExchange(payload);
       if (res.status === 'matched' && res.session_id) {
         resolvedRef.current = true;
+        listenerRef.current?.markMatched();
         await loadSession(res.session_id);
       } else if (res.status === 'waiting' && res.pending_id) {
         startPolling(res.pending_id);
@@ -219,6 +202,7 @@ export default function ExchangeScreen() {
         const status = await getMatchStatus(pendingId);
         if (status.status === 'matched' && status.session_id) {
           resolvedRef.current = true;
+          listenerRef.current?.markMatched();
           clearInterval(pollRef.current!);
           await loadSession(status.session_id);
         }
