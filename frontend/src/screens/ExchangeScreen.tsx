@@ -147,8 +147,11 @@ export default function ExchangeScreen() {
   const receivedRef = useRef(false); // 相手トークン受信済みフラグ（リスニング停止用）
   const resolvedRef = useRef(false); // 双方照合完了フラグ（送信ループ停止用）
 
-  // 待機=stop.png / 鳴き=bark.webp の切替用
+  // 待機=stop.png / 鳴き=bark.webp の切替用。
+  // isBarking: 送信(鳴く)区間中か。barkPlaying: bark.webp を実際に再生表示中か
+  // （送信区間より長い場合も最後まで再生し切るため isBarking とは分離する）。
   const [isBarking, setIsBarking] = useState(false);
+  const [barkPlaying, setBarkPlaying] = useState(false);
   const [barkReady, setBarkReady] = useState(false);
   const barkCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const barkPlayerRef = useRef<ExchangeAnimPlayer | null>(null);
@@ -180,6 +183,8 @@ export default function ExchangeScreen() {
     setShowQR(false);
     setQrLoading(false);
     setIsBarking(false);
+    setBarkPlaying(false);
+    barkPlayerRef.current?.stop();
   }, []);
 
   // コンポーネントアンマウント時にクリーンアップ
@@ -211,16 +216,15 @@ export default function ExchangeScreen() {
     };
   }, []);
 
-  // 鳴き区間(isBarking)の開始/終了で bark プレイヤーを起動/停止する
+  // 鳴き区間(isBarking)の立ち上がりで bark.webp を1回再生。送信区間が終わっても
+  // 途中で止めず、アニメーションを最後まで再生し切ってから stop.png へ戻す。
   useEffect(() => {
-    if (!barkReady) return;
+    if (!barkReady || !isBarking) return;
     const player = barkPlayerRef.current;
     if (!player) return;
-    if (isBarking) {
-      player.start(BARK_LOOPS, () => {});
-    } else {
-      player.stop();
-    }
+    setBarkPlaying(true);
+    player.start(BARK_LOOPS, () => setBarkPlaying(false));
+    // クリーンアップで stop しない（最後まで再生させる）
   }, [isBarking, barkReady]);
 
   // session_active になったらフレームキャッシュからプレイヤーを生成
@@ -511,18 +515,19 @@ export default function ExchangeScreen() {
             />
           ) : (
             <>
-              {/* 待機=stop.png（ベース層） */}
+              {/* 待機=stop.png（ベース層）。bark.webp 再生中は透けないよう非表示にする */}
               <img
                 src="/png/stop.png"
                 alt=""
                 className="absolute inset-0 w-full h-full object-contain"
+                style={{ opacity: (canPlayBark ? barkPlaying : isBarking) ? 0 : 1 }}
               />
-              {/* 鳴き=bark.webp（鳴き区間のみ opacity で重ねる） */}
+              {/* 鳴き=bark.webp（再生中のみ opacity で重ねる） */}
               {canPlayBark ? (
                 <canvas
                   ref={barkCanvasRef}
                   className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'contain', opacity: isBarking && barkReady ? 1 : 0 }}
+                  style={{ objectFit: 'contain', opacity: barkPlaying ? 1 : 0 }}
                 />
               ) : (
                 <img
