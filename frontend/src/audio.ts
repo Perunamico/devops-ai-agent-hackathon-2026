@@ -39,6 +39,7 @@ const BC_BACKOFF_MAX_MS = 2500;
 const BC_END_ALPHA_MS = 500;    // START検出後、END待ちに上乗せする余裕(α)
 const BC_RESPOND_DELAY_MS = 300; // END受信→応答送信までの待ち
 const BC_MAX_CYCLES = 6;        // 鳴くサイクルの上限（トークン有効期限60秒内）
+const PRE_BARK_MS = 800;        // 鳴き直前 0.8 秒だけ quick_stand を出す（"-0.8sec" 指定）
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
@@ -181,15 +182,20 @@ export interface BroadcastExchange {
   markMatched: () => void;
 }
 
+export type ExchangeClipName = 'slow_stand' | 'bark_vibe' | 'quick_sit' | 'quick_stand';
+export type ExchangeRestImage = 'stop' | 'listen';
+
 export function createBroadcastExchange(opts: {
   ownPayload: number[];
   onPeerReceived: (payload: number[]) => void;
   onExhausted: (received: boolean) => void;
   onError: (reason: 'mic_denied') => void;
-  // 送信(鳴く)区間の開始/終了通知。UI の映像(bark.webp/stop.png)切替に使う。
-  onTransmitChange?: (transmitting: boolean) => void;
+  // 上層: ワンショット webp クリップを1回再生させる
+  onClip?: (name: ExchangeClipName) => void;
+  // 下層: クリップ非再生中に見せる静止画
+  onRest?: (image: ExchangeRestImage) => void;
 }): BroadcastExchange {
-  const { ownPayload, onPeerReceived, onExhausted, onError, onTransmitChange } = opts;
+  const { ownPayload, onPeerReceived, onExhausted, onError, onClip, onRest } = opts;
   const ownSymbols = encodePayload(ownPayload);
   const frameSymbolCount = ownSymbols.length; // START + 14 + END = 16記号
 
@@ -222,10 +228,7 @@ export function createBroadcastExchange(opts: {
     cancelAnimationFrame(animId);
     stream?.getTracks().forEach(t => t.stop());
     audioCtx?.close();
-    if (transmitting) {
-      transmitting = false;
-      onTransmitChange?.(false);
-    }
+    transmitting = false; // 半二重制御フラグのリセット（映像通知は UI 側の cleanup が担当）
   }
 
   function emitSymbol(sym: number) {
@@ -285,11 +288,17 @@ export function createBroadcastExchange(opts: {
 
     for (let cycle = 0; cycle < BC_MAX_CYCLES && !stopped && !matched; cycle++) {
       // --- ランダム待機（聞く） ---
+      // 待機終盤 PRE_BARK_MS で quick_stand を出す。待機中に相手のSTARTを検出したら
+      // リズム崩れとして listen.png に切り替え（再生中クリップは UI 側で流し切る）。
       rxReset();
+      let rhythmBroken = false;
+      let standEmitted = false;
       const deadline = performance.now() + randBroadcastBackoffMs();
       while (performance.now() < deadline && !stopped && !matched) {
         if (rxState === 'READING') {
-          // STARTを検出 → 受信専念（DATA長+α だけEND待ち）
+          // 相手が鳴き始めた → リズム崩れ。受信専念（DATA長+α だけEND待ち）
+          rhythmBroken = true;
+          onRest?.('listen');
           const ok = await awaitEnd(dataDuration + BC_END_ALPHA_MS);
           if (ok && rxPayload && !received) {
             received = true;
@@ -299,10 +308,17 @@ export function createBroadcastExchange(opts: {
           }
           break;
         }
+        if (!standEmitted && performance.now() >= deadline - PRE_BARK_MS) {
+          onClip?.('quick_stand'); // 鳴き直前の立ち上がり
+          standEmitted = true;
+        }
         await sleep(10);
       }
 
       if (stopped || matched) break;
+
+      // 崩れて早期 break した場合も quick_stand は流す（流し切ってから listen.png が埋める）
+      if (rhythmBroken && !standEmitted) onClip?.('quick_stand');
 
       if (received) await sleep(BC_RESPOND_DELAY_MS); // 受信直後は数百ms後に応答
 
@@ -310,10 +326,11 @@ export function createBroadcastExchange(opts: {
 
       // --- 鳴く（DATA送信・聞かない） ---
       transmitting = true;
-      onTransmitChange?.(true);
+      onClip?.('bark_vibe');
       await playSymbols(ownSymbols, audioCtx ?? undefined);
       transmitting = false;
-      onTransmitChange?.(false);
+      onClip?.('quick_sit');  // 鳴き終わり
+      onRest?.('stop');       // 次サイクルの休憩は stop.png
     }
 
     // 双方成立は React 側が markMatched + loadSession 済み。それ以外は上限到達。
