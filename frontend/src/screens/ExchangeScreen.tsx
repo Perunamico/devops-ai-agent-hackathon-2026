@@ -51,12 +51,6 @@ interface ExchangeAnimPlayer {
 // アンマウント時に破棄するため HomeScreen の frameCache とは別管理
 const exchangeFrameCache: Partial<Record<ExchangeAnimName, DecodedExchangeFrame[]>> = {};
 
-// 鳴き声送信中に再生する bark.webp のデコード済みフレーム。
-// 交流モード開始(マウント)でデコードし、終了(アンマウント)で null にして解放する。
-let barkFrameCache: DecodedExchangeFrame[] | null = null;
-// 鳴き区間ごとに bark.webp を1回だけ再生する（ループしない）。
-const BARK_LOOPS = 1;
-
 const EXCHANGE_ANIM_CONFIG: Record<ExchangeAnimName, { minLoops: number }> = {
   interact_normal: { minLoops: 3 },
   interact_happy:  { minLoops: 1 },
@@ -147,14 +141,13 @@ export default function ExchangeScreen() {
   const receivedRef = useRef(false); // 相手トークン受信済みフラグ（リスニング停止用）
   const resolvedRef = useRef(false); // 双方照合完了フラグ（送信ループ停止用）
 
-  // 待機=stop.png / 鳴き=bark.webp の切替用。
-  // isBarking: 送信(鳴く)区間中か。barkPlaying: bark.webp を実際に再生表示中か
-  // （送信区間より長い場合も最後まで再生し切るため isBarking とは分離する）。
-  const [isBarking, setIsBarking] = useState(false);
-  const [barkPlaying, setBarkPlaying] = useState(false);
-  const [barkReady, setBarkReady] = useState(false);
-  const barkCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const barkPlayerRef = useRef<ExchangeAnimPlayer | null>(null);
+  // 探索フェーズの映像は hand.webp ループに統一。鳴いている区間(barking)だけ CSS で
+  // 「震え＋音波」エフェクトを重ねる。barking は audio.ts の onClip('bark_vibe')〜
+  // ('quick_sit') 通知から導出する。
+  const [barking, setBarking] = useState(false);
+  const [autoStartRequested, setAutoStartRequested] = useState(false); // 通常フローの自動開始待ち
+  const autoStartedRef = useRef(false);
+  const [exchangeStarted, setExchangeStarted] = useState(false); // 鳴き声交換が実際に開始したか
 
   // 交流中アニメーション用
   const [currentExchangeAnim, setCurrentExchangeAnim] = useState<ExchangeAnimName>('interact_normal');
@@ -182,50 +175,17 @@ export default function ExchangeScreen() {
     resolvedRef.current = false;
     setShowQR(false);
     setQrLoading(false);
-    setIsBarking(false);
-    setBarkPlaying(false);
-    barkPlayerRef.current?.stop();
+    setBarking(false);
+    setExchangeStarted(false);
   }, []);
 
   // コンポーネントアンマウント時にクリーンアップ
   useEffect(() => () => cleanup(), [cleanup]);
 
-  // 交流モード開始(マウント)で bark.webp をデコードキャッシュ化し、
-  // 終了(アンマウント)で解放する。stop.png は静的なのでプリロードのみ。
+  // 探索フェーズの映像 hand.webp をプリロード（<img> なのでレンダリングでも読まれるが先読み）。
   useEffect(() => {
-    new Image().src = '/png/stop.png';
-    let cancelled = false;
-    if ('ImageDecoder' in window) {
-      (async () => {
-        try {
-          if (!barkFrameCache) barkFrameCache = await decodeWebpFrames('/webp/bark.webp');
-          const canvas = barkCanvasRef.current;
-          if (cancelled || !canvas || !barkFrameCache) return;
-          barkPlayerRef.current = createExchangePlayer(canvas, barkFrameCache);
-          setBarkReady(true);
-        } catch {
-          // デコード失敗時は <img> フォールバックに委ねる
-        }
-      })();
-    }
-    return () => {
-      cancelled = true;
-      barkPlayerRef.current?.stop();
-      barkPlayerRef.current = null;
-      barkFrameCache = null;
-    };
+    new Image().src = '/webp/hand.webp';
   }, []);
-
-  // 鳴き区間(isBarking)の立ち上がりで bark.webp を1回再生。送信区間が終わっても
-  // 途中で止めず、アニメーションを最後まで再生し切ってから stop.png へ戻す。
-  useEffect(() => {
-    if (!barkReady || !isBarking) return;
-    const player = barkPlayerRef.current;
-    if (!player) return;
-    setBarkPlaying(true);
-    player.start(BARK_LOOPS, () => setBarkPlaying(false));
-    // クリーンアップで stop しない（最後まで再生させる）
-  }, [isBarking, barkReady]);
 
   // session_active になったらフレームキャッシュからプレイヤーを生成
   useEffect(() => {
@@ -265,8 +225,8 @@ export default function ExchangeScreen() {
     const params = new URLSearchParams(window.location.search);
     const scannedToken = params.get('exchangeToken');
     if (!scannedToken) {
-      // 通常フロー: マウント時に鳴き声交換を自動開始
-      startVoiceExchange();
+      // 通常フロー: クリップのデコード完了(キャッシュ化)を待ってから自動開始する
+      setAutoStartRequested(true);
       return;
     }
     // URL パラメータを除去
@@ -290,6 +250,14 @@ export default function ExchangeScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 通常フローは映像が hand.webp ループに統一されデコード待ちが不要になったため即開始する。
+  useEffect(() => {
+    if (!autoStartRequested || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startVoiceExchange();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartRequested]);
+
   async function startVoiceExchange() {
     let data: ExchangeTokenResponse;
     try {
@@ -302,7 +270,8 @@ export default function ExchangeScreen() {
     }
 
     setStep('exchanging');
-    setIsBarking(false);
+    setExchangeStarted(true);
+    setBarking(false);
 
     // React レンダリング待ち
     await new Promise(r => setTimeout(r, 0));
@@ -327,8 +296,9 @@ export default function ExchangeScreen() {
         if (!received) setStep('failed');
       },
       onError: () => {},
-      // 鳴く区間で bark.webp、待機区間で stop.png に切り替える
-      onTransmitChange: (transmitting) => setIsBarking(transmitting),
+      // 鳴き区間(bark_vibe〜quick_sit)だけ barking=true にして CSS エフェクトを出す。
+      onClip: (name) => setBarking(name === 'bark_vibe'),
+      onRest: () => setBarking(false),
     });
     listenerRef.current = exchange;
     exchange.start();
@@ -498,47 +468,26 @@ export default function ExchangeScreen() {
   // ---- UI ----
 
   if (step === 'exchanging' || step === 'failed' || step === 'resolving' || step === 'waiting') {
-    const canPlayBark = 'ImageDecoder' in window;
     return (
       <div
         className="flex flex-col bg-white relative"
         style={{ height: 'calc(100svh - 3.5rem)' }}
       >
-        {/* 映像: HomeScreen の flex-1 と同一構造 */}
+        {/* 映像: HomeScreen の flex-1 と同一構造。全状態 hand.webp ループに統一し、
+            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。 */}
         <div className="flex-1 min-h-0 relative">
-          {step === 'failed' ? (
-            <img
-              src="/webp/hand.webp"
-              alt=""
-              className="absolute"
-              style={{ height: '70vh', width: 'auto', left: '50%', top: '50%', transform: 'translateX(-50%) translateY(-55%)' }}
-            />
-          ) : (
-            <>
-              {/* 待機=stop.png（ベース層）。bark.webp 再生中は透けないよう非表示にする */}
-              <img
-                src="/png/stop.png"
-                alt=""
-                className="absolute inset-0 w-full h-full object-contain"
-                style={{ opacity: (canPlayBark ? barkPlaying : isBarking) ? 0 : 1 }}
-              />
-              {/* 鳴き=bark.webp（再生中のみ opacity で重ねる） */}
-              {canPlayBark ? (
-                <canvas
-                  ref={barkCanvasRef}
-                  className="absolute inset-0 w-full h-full"
-                  style={{ objectFit: 'contain', opacity: barkPlaying ? 1 : 0 }}
-                />
-              ) : (
-                <img
-                  src="/webp/bark.webp"
-                  alt=""
-                  className="absolute inset-0 w-full h-full object-contain"
-                  style={{ opacity: isBarking ? 1 : 0 }}
-                />
-              )}
-            </>
-          )}
+          <div className="bark-pet">
+            <img src="/webp/hand.webp" alt="" className="bark-img" />
+            {barking && (
+              <>
+                <span className="bark-ripple" />
+                <span className="bark-ripple bark-ripple-delay" />
+                <span className="bark-note bark-note-1">♪</span>
+                <span className="bark-note bark-note-2">♫</span>
+                <span className="bark-note bark-note-3">♬</span>
+              </>
+            )}
+          </div>
           {/* QRカード: 映像上に overlay（下部高さを変えない）*/}
           {showQR && (
             <div className="absolute inset-0 flex items-end justify-center pb-4">
@@ -565,8 +514,14 @@ export default function ExchangeScreen() {
         {/* HomeScreen の吹き出しエリアと同一クラス → 高さが一致 */}
         <div className="relative mx-6 mb-3 flex-shrink-0">
           <img src="/icons/flame.png" className="w-full" alt="" />
+          {/* キャッシュ化(デコード)完了前は準備中を表示し、開始後に波形へ切り替える */}
+          {step === 'exchanging' && !showQR && !exchangeStarted && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <p className="text-sm font-medium text-violet-600 animate-pulse">準備中...</p>
+            </div>
+          )}
           {/* 鳴き声モードのみ波形アニメーションを表示 */}
-          {step === 'exchanging' && !showQR && (
+          {step === 'exchanging' && !showQR && exchangeStarted && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex items-center gap-1 h-8">
                 {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6].map((h, i) => (
