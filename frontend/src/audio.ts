@@ -186,8 +186,10 @@ export function createBroadcastExchange(opts: {
   onPeerReceived: (payload: number[]) => void;
   onExhausted: (received: boolean) => void;
   onError: (reason: 'mic_denied') => void;
+  // 送信(鳴く)区間の開始/終了通知。UI の映像(bark.webp/stop.png)切替に使う。
+  onTransmitChange?: (transmitting: boolean) => void;
 }): BroadcastExchange {
-  const { ownPayload, onPeerReceived, onExhausted, onError } = opts;
+  const { ownPayload, onPeerReceived, onExhausted, onError, onTransmitChange } = opts;
   const ownSymbols = encodePayload(ownPayload);
   const frameSymbolCount = ownSymbols.length; // START + 14 + END = 16記号
 
@@ -220,6 +222,10 @@ export function createBroadcastExchange(opts: {
     cancelAnimationFrame(animId);
     stream?.getTracks().forEach(t => t.stop());
     audioCtx?.close();
+    if (transmitting) {
+      transmitting = false;
+      onTransmitChange?.(false);
+    }
   }
 
   function emitSymbol(sym: number) {
@@ -304,8 +310,10 @@ export function createBroadcastExchange(opts: {
 
       // --- 鳴く（DATA送信・聞かない） ---
       transmitting = true;
+      onTransmitChange?.(true);
       await playSymbols(ownSymbols, audioCtx ?? undefined);
       transmitting = false;
+      onTransmitChange?.(false);
     }
 
     // 双方成立は React 側が markMatched + loadSession 済み。それ以外は上限到達。
