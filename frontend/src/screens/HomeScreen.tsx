@@ -321,16 +321,6 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* セリフ欄: 画面最上部に表示 */}
-      {!isLoading && (
-        <div className="relative mx-6 mt-3 mb-2 flex-shrink-0">
-          <img src="/icons/flame.png" className="w-full" alt="" />
-          <div className="absolute inset-0 flex items-center justify-center px-10">
-            <p className="text-sm text-gray-800 text-center leading-relaxed">{bubbleText}</p>
-          </div>
-        </div>
-      )}
-
       {/* アニメーション: canvas は常に DOM に存在させて ref を確保 */}
       <div className="flex-1 min-h-0 relative overflow-visible">
         {useImgFallback
@@ -356,9 +346,18 @@ export default function HomeScreen() {
         }
       </div>
 
-      {/* 入力エリア: 最下部（ローディング完了後のみ表示） */}
-      {!isLoading && (
-      <div className="px-4 pb-2 flex-shrink-0">
+      {/* 吹き出し・入力エリアはローディング完了後のみ表示 */}
+      {!isLoading && <>
+      {/* 吹き出し */}
+      <div className="relative mx-6 mb-3 flex-shrink-0">
+        <img src="/icons/flame.png" className="w-full" alt="" />
+        <div className="absolute inset-0 flex items-center justify-center px-10">
+          <p className="text-sm text-gray-800 text-center leading-relaxed">{bubbleText}</p>
+        </div>
+      </div>
+
+      {/* 入力エリア */}
+      <div className="px-4 pb-6 flex-shrink-0">
         <form onSubmit={handleSubmit} className="flex items-center gap-3">
           <div className="flex-1 flex items-center bg-gray-100 rounded-full px-5 py-3 border border-gray-200 shadow-sm focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 focus-within:bg-white transition-colors">
             <input
@@ -414,7 +413,7 @@ export default function HomeScreen() {
           </button>
         </form>
       </div>
-      )}
+      </>}
     </div>
   );
 }
