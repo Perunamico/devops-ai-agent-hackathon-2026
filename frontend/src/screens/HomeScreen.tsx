@@ -454,7 +454,7 @@ export default function HomeScreen() {
                 }
               }}
               placeholder={phase === 'naming' ? `名前を入力（${NAME_MAX}文字まで）` : 'メッセージを入力...'}
-              className="w-full outline-none text-base text-gray-700 placeholder-gray-400 bg-transparent"
+              className="w-full border-0 outline-none text-base text-gray-700 placeholder-gray-400 bg-transparent"
             />
           </div>
           {phase === 'active' && hasSpeechAPI && (
