@@ -69,8 +69,8 @@ function disposeExchangeFrames(): void {
   }
 }
 
-async function decodeExchangeFrames(name: ExchangeAnimName): Promise<DecodedExchangeFrame[]> {
-  const res = await fetch(`/webp/${name}.webp`);
+async function decodeWebpFrames(url: string): Promise<DecodedExchangeFrame[]> {
+  const res = await fetch(url);
   const blob = await res.blob();
   const buffer = await blob.arrayBuffer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,6 +89,10 @@ async function decodeExchangeFrames(name: ExchangeAnimName): Promise<DecodedExch
   }
   decoder.close();
   return frames;
+}
+
+function decodeExchangeFrames(name: ExchangeAnimName): Promise<DecodedExchangeFrame[]> {
+  return decodeWebpFrames(`/webp/${name}.webp`);
 }
 
 function createExchangePlayer(
@@ -145,7 +149,14 @@ export default function ExchangeScreen() {
   const playingRef = useRef(false);
   const receivedRef = useRef(false); // 相手トークン受信済みフラグ（リスニング停止用）
   const resolvedRef = useRef(false); // 双方照合完了フラグ（送信ループ停止用）
-  const exchangingVideoRef = useRef<HTMLVideoElement>(null);
+
+  // 探索フェーズの映像は hand.webp ループに統一。鳴いている区間(barking)だけ CSS で
+  // 「震え＋音波」エフェクトを重ねる。barking は audio.ts の onClip('bark_vibe')〜
+  // ('quick_sit') 通知から導出する。
+  const [barking, setBarking] = useState(false);
+  const [autoStartRequested, setAutoStartRequested] = useState(false); // 通常フローの自動開始待ち
+  const autoStartedRef = useRef(false);
+  const [exchangeStarted, setExchangeStarted] = useState(false); // 鳴き声交換が実際に開始したか
 
   // 交流中アニメーション用
   const [currentExchangeAnim, setCurrentExchangeAnim] = useState<ExchangeAnimName>('interact_normal');
@@ -161,15 +172,6 @@ export default function ExchangeScreen() {
       listenerRef.current?.stop();
       listenerRef.current = null;
     }
-    // failed 時: ホームと同じ映像(normal.mp4)に切り替えて再生
-    // load() 直後は readyState=HAVE_NOTHING のため canplay イベント後に play() する
-    if (step === 'failed' && exchangingVideoRef.current) {
-      const video = exchangingVideoRef.current;
-      video.src = '/movie/normal.mp4';
-      video.load();
-      const onCanPlay = () => video.play().catch(() => {});
-      video.addEventListener('canplay', onCanPlay, { once: true });
-    }
   }, [step]);
 
   const cleanup = useCallback(() => {
@@ -183,6 +185,8 @@ export default function ExchangeScreen() {
     resolvedRef.current = false;
     setShowQR(false);
     setQrLoading(false);
+    setBarking(false);
+    setExchangeStarted(false);
     // 交流中アニメーションの後片付け（バイバイ・諦める・リトライ・アンマウント時）
     Object.values(exchangePlayersRef.current).forEach(p => p?.stop());
     exchangePlayersRef.current = {};
@@ -194,6 +198,11 @@ export default function ExchangeScreen() {
 
   // コンポーネントアンマウント時にクリーンアップ
   useEffect(() => () => cleanup(), [cleanup]);
+
+  // 探索フェーズの映像 hand.webp をプリロード（<img> なのでレンダリングでも読まれるが先読み）。
+  useEffect(() => {
+    new Image().src = '/webp/hand.webp';
+  }, []);
 
   // session_active になったらフレームキャッシュからプレイヤーを生成。
   // 重要: cleanup ではプレイヤー停止のみ行い、キャッシュ削除や ready のリセットはしない。
@@ -241,8 +250,8 @@ export default function ExchangeScreen() {
     const params = new URLSearchParams(window.location.search);
     const scannedToken = params.get('exchangeToken');
     if (!scannedToken) {
-      // 通常フロー: マウント時に鳴き声交換を自動開始
-      startVoiceExchange();
+      // 通常フロー: クリップのデコード完了(キャッシュ化)を待ってから自動開始する
+      setAutoStartRequested(true);
       return;
     }
     // URL パラメータを除去
@@ -266,6 +275,14 @@ export default function ExchangeScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 通常フローは映像が hand.webp ループに統一されデコード待ちが不要になったため即開始する。
+  useEffect(() => {
+    if (!autoStartRequested || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startVoiceExchange();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartRequested]);
+
   async function startVoiceExchange() {
     let data: ExchangeTokenResponse;
     try {
@@ -278,21 +295,11 @@ export default function ExchangeScreen() {
     }
 
     setStep('exchanging');
+    setExchangeStarted(true);
+    setBarking(false);
 
     // React レンダリング待ち
     await new Promise(r => setTimeout(r, 0));
-
-    // failed 後のリトライ時は normal.mp4 が残っているので bark.mp4 を再ロードして再生
-    if (exchangingVideoRef.current) {
-      const video = exchangingVideoRef.current;
-      if (!video.currentSrc.endsWith('bark.mp4')) {
-        video.src = '/movie/bark.mp4';
-        video.load();
-        video.addEventListener('canplay', () => video.play().catch(() => {}), { once: true });
-      } else {
-        video.play().catch(() => {});
-      }
-    }
 
     playingRef.current = true;
     receivedRef.current = false;
@@ -314,6 +321,9 @@ export default function ExchangeScreen() {
         if (!received) setStep('failed');
       },
       onError: () => {},
+      // 鳴き区間(bark_vibe〜quick_sit)だけ barking=true にして CSS エフェクトを出す。
+      onClip: (name) => setBarking(name === 'bark_vibe'),
+      onRest: () => setBarking(false),
     });
     listenerRef.current = exchange;
     exchange.start();
@@ -485,25 +495,28 @@ export default function ExchangeScreen() {
 
   // ---- UI ----
 
-  if (step === 'exchanging' || step === 'failed') {
+  if (step === 'exchanging' || step === 'failed' || step === 'resolving' || step === 'waiting') {
     return (
       <div
         className="flex flex-col bg-white relative"
         style={{ height: 'calc(100svh - 3.5rem)' }}
       >
-        {/* 動画: HomeScreen の flex-1 と同一構造 */}
+        {/* 映像: HomeScreen の flex-1 と同一構造。全状態 hand.webp ループに統一し、
+            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。 */}
         <div className="flex-1 min-h-0 relative">
-          <video
-            ref={exchangingVideoRef}
-            src="/movie/bark.mp4"
-            loop
-            muted
-            playsInline
-            preload="auto"
-            onLoadedData={() => exchangingVideoRef.current?.play().catch(() => {})}
-            className="absolute inset-0 w-full h-full object-contain"
-          />
-          {/* QRカード: video 上に overlay（下部高さを変えない）*/}
+          <div className="bark-pet">
+            <img src="/webp/hand.webp" alt="" className="bark-img" />
+            {barking && (
+              <>
+                <span className="bark-ripple" />
+                <span className="bark-ripple bark-ripple-delay" />
+                <span className="bark-note bark-note-1">♪</span>
+                <span className="bark-note bark-note-2">♫</span>
+                <span className="bark-note bark-note-3">♬</span>
+              </>
+            )}
+          </div>
+          {/* QRカード: 映像上に overlay（下部高さを変えない）*/}
           {showQR && (
             <div className="absolute inset-0 flex items-end justify-center pb-4">
               <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-[calc(100%-2rem)] shadow-lg">
@@ -529,8 +542,14 @@ export default function ExchangeScreen() {
         {/* HomeScreen の吹き出しエリアと同一クラス → 高さが一致 */}
         <div className="relative mx-6 mb-3 flex-shrink-0">
           <img src="/icons/flame.png" className="w-full" alt="" />
+          {/* キャッシュ化(デコード)完了前は準備中を表示し、開始後に波形へ切り替える */}
+          {step === 'exchanging' && !showQR && !exchangeStarted && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <p className="text-sm font-medium text-violet-600 animate-pulse">準備中...</p>
+            </div>
+          )}
           {/* 鳴き声モードのみ波形アニメーションを表示 */}
-          {step === 'exchanging' && !showQR && (
+          {step === 'exchanging' && !showQR && exchangeStarted && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex items-center gap-1 h-8">
                 {[0.4, 0.7, 1, 0.8, 0.5, 0.9, 0.6].map((h, i) => (
@@ -543,24 +562,37 @@ export default function ExchangeScreen() {
               </div>
             </div>
           )}
+          {/* 照合中/相手待ちは双方成立まで stop.png のまま、文言だけ小さく重ねる */}
+          {(step === 'resolving' || step === 'waiting') && (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <p className="text-sm font-medium text-violet-600 animate-pulse">
+                {step === 'resolving' ? '照合中...' : '相手を待っています...'}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* HomeScreen の入力エリアと同一クラス → 高さが一致 */}
         <div className="px-4 pb-6 flex-shrink-0 flex items-center justify-center">
-          {showQR ? (
-            <button
-              onClick={handleBackToVoice}
-              className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
-            >
-              🎵 鳴き声に戻る
-            </button>
+          {(step === 'exchanging' || step === 'failed') ? (
+            showQR ? (
+              <button
+                onClick={handleBackToVoice}
+                className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+              >
+                🎵 鳴き声に戻る
+              </button>
+            ) : (
+              <button
+                onClick={handleQR}
+                className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+              >
+                📷 QRコードを使う
+              </button>
+            )
           ) : (
-            <button
-              onClick={handleQR}
-              className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
-            >
-              📷 QRコードを使う
-            </button>
+            // resolving/waiting はボタンを出さないが高さは維持する
+            <div className="h-12" />
           )}
         </div>
 
@@ -599,26 +631,6 @@ export default function ExchangeScreen() {
             </div>
           </div>
         )}
-      </div>
-    );
-  }
-
-  if (step === 'resolving') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 gap-4">
-        <div className="text-5xl animate-spin">🌀</div>
-        <p className="text-gray-700 font-medium">照合中...</p>
-        <p className="text-xs text-gray-400">相手のペットを確認しています</p>
-      </div>
-    );
-  }
-
-  if (step === 'waiting') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 gap-4">
-        <div className="text-5xl animate-pulse">🤝</div>
-        <p className="text-gray-700 font-medium">相手のペットを待っています...</p>
-        <p className="text-xs text-gray-400">相手も端末を近づけてください</p>
       </div>
     );
   }

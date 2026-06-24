@@ -251,3 +251,57 @@ body {
 .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .animate-spin { animation: spin 1s linear infinite; }
 .animate-bounce { animation: bounce 1s infinite; }
+
+/* 交流モード・鳴き声エフェクト: hand.webp ループの上に「音波＋音符」をCSSで重ねる。
+   外側 .bark-pet がセンタリング、内側 .bark-img が映像。 */
+.bark-pet {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 70vh;
+  transform: translate(-50%, -55%);
+}
+.bark-img {
+  display: block;
+  height: 100%;
+  width: auto;
+}
+
+/* 下のほうから広がる紫の音波リング（2本を delay 違いで連続発火） */
+.bark-ripple {
+  position: absolute;
+  left: 50%;
+  top: 78%;
+  width: 45%;
+  aspect-ratio: 1 / 1;
+  border-radius: 9999px;
+  border: 3px solid rgba(167, 139, 250, 0.7); /* violet-400 */
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.4);
+  animation: bark-ripple 0.9s ease-out infinite;
+}
+.bark-ripple-delay { animation-delay: 0.45s; }
+@keyframes bark-ripple {
+  0%   { transform: translate(-50%, -50%) scale(0.4); opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(1.8); opacity: 0; }
+}
+
+/* 周りにふわっと浮かんで上がる音符 */
+.bark-note {
+  position: absolute;
+  color: #a78bfa; /* violet-400 */
+  font-size: 1.75rem;
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+  animation: bark-note 1.4s ease-out infinite;
+}
+.bark-note-1 { left: 26%; top: 66%; animation-delay: 0s;    }
+.bark-note-2 { left: 66%; top: 60%; font-size: 1.4rem; animation-delay: 0.5s; }
+.bark-note-3 { left: 48%; top: 56%; font-size: 2.1rem;  animation-delay: 0.9s; }
+@keyframes bark-note {
+  0%   { opacity: 0; transform: translateY(0)     rotate(-10deg) scale(0.7); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-90px) rotate(12deg)  scale(1.1); }
+}
