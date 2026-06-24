@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 
 from app.agents.encounter_agent import EncounterAgent
 from app.agents.conversation_agent import ConversationAgent
@@ -114,9 +114,45 @@ def health():
     return {"status": "ok"}
 
 
+def _extract_initial_profile_bg(
+    db: FirestoreService,
+    ai: VertexAIService,
+    uid: str,
+    body: PetCreate,
+) -> None:
+    """初期プロフィール抽出（LLM）とメモリ保存。
+
+    ペット表示には不要で、Gemini 呼び出し（リトライ込みで数秒）と Firestore 書き込みが
+    レスポンスをブロックして「名付け後の待ち」を長くしていたため、バックグラウンドで実行する。
+    """
+    try:
+        persona_agent = PetPersonaAgent(ai)
+        result = persona_agent.extract_initial_profile(body, {
+            "personality": body.personality,
+            "tone": body.tone,
+        })
+        if result.category in ("public", "private"):
+            db.upsert_private_memory(uid, {
+                "interests": result.interests,
+                "values": result.values,
+                "pet_personality": body.personality,
+                "pet_tone": body.tone,
+            })
+        if result.category == "public" and result.safe_summary:
+            db.upsert_public_memory(uid, {
+                "safe_summaries": [result.safe_summary],
+                "shareable_interests": result.interests,
+                "safe_topic_tags": result.interests,
+                "public_conversation_hooks": [],
+            })
+    except Exception as e:
+        logger.error("initial profile background task failed for %s: %s", uid, e)
+
+
 @app.post("/pets", response_model=PetResponse)
 def create_pet(
     body: PetCreate,
+    background_tasks: BackgroundTasks,
     uid: str = Depends(require_auth),
     db: FirestoreService = Depends(get_firestore),
     ai: VertexAIService = Depends(get_vertex_ai),
@@ -124,25 +160,9 @@ def create_pet(
     pet_id = db.create_pet(uid, {"name": body.name, "personality": body.personality, "tone": body.tone})
     db.upsert_user(uid, {"name": uid})
 
-    persona_agent = PetPersonaAgent(ai)
-    result = persona_agent.extract_initial_profile(body, {
-        "personality": body.personality,
-        "tone": body.tone,
-    })
-    if result.category in ("public", "private"):
-        db.upsert_private_memory(uid, {
-            "interests": result.interests,
-            "values": result.values,
-            "pet_personality": body.personality,
-            "pet_tone": body.tone,
-        })
-    if result.category == "public" and result.safe_summary:
-        db.upsert_public_memory(uid, {
-            "safe_summaries": [result.safe_summary],
-            "shareable_interests": result.interests,
-            "safe_topic_tags": result.interests,
-            "public_conversation_hooks": [],
-        })
+    # LLM による初期プロフィール抽出はレスポンス後にバックグラウンドで実行し、
+    # 名付け直後すぐにホームへ進めるようにする。
+    background_tasks.add_task(_extract_initial_profile_bg, db, ai, uid, body)
 
     pet = db.get_pet_by_user(uid)
     return PetResponse(

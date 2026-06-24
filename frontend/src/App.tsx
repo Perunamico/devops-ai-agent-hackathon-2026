@@ -166,7 +166,7 @@ export default function App() {
     <AppContext.Provider value={ctx}>
       <div className="max-w-md mx-auto min-h-svh relative bg-white">
         <TopNav />
-        <div className={(screen === 'home' && (homeLoading || naming)) ? '' : screen === 'home' ? 'pb-20' : 'pt-14'}>
+        <div className={(screen === 'home' && homeLoading) ? '' : screen === 'home' ? 'pb-20' : 'pt-14'}>
 
           {renderScreen()}
         </div>
