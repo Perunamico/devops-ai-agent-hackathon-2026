@@ -81,7 +81,7 @@ function TopNav() {
   }
 
   return (
-    <nav className="fixed top-0 left-0 right-0 bg-white flex gap-2 px-3 py-2 z-50 max-w-md mx-auto h-20" style={{ willChange: 'transform' }}>
+    <nav className="fixed bottom-0 left-0 right-0 bg-white flex gap-2 px-3 py-2 z-50 max-w-md mx-auto h-20" style={{ willChange: 'transform' }}>
       {NAV_ITEMS.map((item) => (
         <button
           key={item.screen}
@@ -162,7 +162,7 @@ export default function App() {
     <AppContext.Provider value={ctx}>
       <div className="max-w-md mx-auto min-h-svh relative bg-white">
         {screen !== 'setup' && <TopNav />}
-        <div className={screen === 'setup' ? '' : (screen === 'home' && homeLoading) ? '' : screen === 'home' ? 'pt-20' : 'pt-14'}>
+        <div className={screen === 'setup' ? '' : (screen === 'home' && homeLoading) ? '' : screen === 'home' ? 'pb-20' : 'pt-14'}>
           {renderScreen()}
         </div>
 

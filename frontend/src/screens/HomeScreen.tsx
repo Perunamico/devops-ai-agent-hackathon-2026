@@ -5,7 +5,8 @@ import { sendChat, getReviewItems } from '../api';
 type AnimName = 'hand' | 'stretch' | 'hand_stretch' | 'blink' | 'shake';
 
 const ANIM_CONFIG: Record<AnimName, { minLoops: number; noConsecutive: boolean }> = {
-  hand:         { minLoops: 5, noConsecutive: false },
+  // hand は無限ループ（onDone は呼ばれない）。メッセージ送信時のみ interlude に切り替わる。
+  hand:         { minLoops: Infinity, noConsecutive: false },
   stretch:      { minLoops: 1, noConsecutive: false },
   hand_stretch: { minLoops: 1, noConsecutive: false },
   blink:        { minLoops: 1, noConsecutive: true },
@@ -22,12 +23,8 @@ const AVAILABLE_ANIMS: AnimName[] = [
 
 const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
 
-function pickNextAnim(current: AnimName, lastInterlude: AnimName | null): AnimName {
-  if (current !== 'hand') return 'hand';
-  const candidates = INTERLUDE_ANIMS.filter(
-    (a) => !(ANIM_CONFIG[a].noConsecutive && a === lastInterlude)
-  );
-  return candidates[Math.floor(Math.random() * candidates.length)];
+function pickInterlude(): AnimName {
+  return INTERLUDE_ANIMS[Math.floor(Math.random() * INTERLUDE_ANIMS.length)];
 }
 
 // --- ImageDecoder を使ったフレーム事前デコード + canvas アニメーション ---
@@ -172,7 +169,6 @@ export default function HomeScreen() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const [currentAnim, setCurrentAnim] = useState<AnimName>('hand');
-  const lastAnimRef = useRef<AnimName | null>(null);
   const canvasRefs = useRef<Partial<Record<AnimName, HTMLCanvasElement>>>({});
   const playersRef = useRef<Partial<Record<AnimName, AnimPlayer>>>({});
   const allFramesRef = useRef<Partial<Record<AnimName, DecodedFrame[]>>>({});
@@ -239,9 +235,8 @@ export default function HomeScreen() {
     if (!player) return;
 
     player.start(ANIM_CONFIG[currentAnim].minLoops, () => {
-      if (currentAnim !== 'hand') lastAnimRef.current = currentAnim;
-      const next = pickNextAnim(currentAnim, lastAnimRef.current);
-      setCurrentAnim(next);
+      // hand は無限ループのため onDone 不発。interlude が1回終わったら hand へ戻す。
+      setCurrentAnim('hand');
     });
 
     return () => player.stop();
@@ -251,6 +246,8 @@ export default function HomeScreen() {
     e?.preventDefault();
     const message = content.trim();
     if (!message || submitting) return;
+    // 送信の瞬間にランダムな interlude を1回再生してペットを反応させる（終了後 hand へ戻る）
+    setCurrentAnim(pickInterlude());
     setSubmitting(true);
     try {
       const result = await sendChat({ message });
@@ -362,7 +359,7 @@ export default function HomeScreen() {
       {/* 入力エリア */}
       <div className="px-4 pb-6 flex-shrink-0">
         <form onSubmit={handleSubmit} className="flex items-center gap-3">
-          <div className="flex-1 bg-white rounded-full px-5 py-3">
+          <div className="flex-1 flex items-center bg-gray-100 rounded-full px-5 py-3 border border-gray-200 shadow-sm focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 focus-within:bg-white transition-colors">
             <input
               type="text"
               value={content}
@@ -374,7 +371,7 @@ export default function HomeScreen() {
                 }
               }}
               placeholder="メッセージを入力..."
-              className="w-full outline-none text-sm text-gray-700 placeholder-gray-400 bg-transparent"
+              className="w-full outline-none text-base text-gray-700 placeholder-gray-400 bg-transparent"
             />
           </div>
           {hasSpeechAPI && (
