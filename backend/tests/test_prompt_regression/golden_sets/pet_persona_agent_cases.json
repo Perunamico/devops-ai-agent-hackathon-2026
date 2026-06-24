@@ -1,0 +1,30 @@
+[
+  {
+    "pet": {
+      "name": "モカ",
+      "personality": "好奇心旺盛",
+      "tone": "やわらかい短文"
+    },
+    "initial_inputs": {
+      "favorite": "写真と散歩が好き",
+      "weekend": "週末はカフェに行くことが多い"
+    },
+    "expected_category": "public",
+    "expected_interests": ["写真", "散歩", "カフェ"],
+    "description": "初期プロフィールから共有可能な趣味を抽出する"
+  },
+  {
+    "pet": {
+      "name": "ルナ",
+      "personality": "落ち着いている",
+      "tone": "丁寧"
+    },
+    "initial_inputs": {
+      "favorite": "映画と読書が好き",
+      "conversation": "静かな話し方が落ち着く"
+    },
+    "expected_category": "public",
+    "expected_interests": ["映画", "読書"],
+    "description": "好みと会話スタイルを初期記憶に反映する"
+  }
+]

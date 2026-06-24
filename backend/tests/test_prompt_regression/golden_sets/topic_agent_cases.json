@@ -1,0 +1,33 @@
+[
+  {
+    "analysis": {
+      "common_topics": ["映画"],
+      "conversation_hooks": ["最近観た映画はありますか？"],
+      "followup_suggestions": ["好きな監督"]
+    },
+    "mode": "on_site",
+    "expected_count": 3,
+    "expected_types": ["conversation_starter", "common_point", "conversation_starter"],
+    "description": "その場カードは3枚で会話開始を支援する"
+  },
+  {
+    "analysis": {
+      "common_topics": ["写真", "旅行"],
+      "related_topics": ["カメラ"],
+      "conversation_hooks": ["旅行先で撮った写真の話"],
+      "followup_suggestions": ["おすすめの撮影スポット"],
+      "new_interest_candidates": ["フィルムカメラ"]
+    },
+    "mode": "post_visit",
+    "expected_count": 6,
+    "expected_types": [
+      "common_point",
+      "conversation_starter",
+      "next_topic",
+      "thank_you_template",
+      "new_interest",
+      "pet_message"
+    ],
+    "description": "帰宅後レポートは6種類のカードを生成する"
+  }
+]

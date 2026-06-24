@@ -1,0 +1,30 @@
+[
+  {
+    "user_a_memory": {
+      "safe_topic_tags": ["映画", "カフェ"],
+      "safe_summaries": ["映画とカフェ巡りが好き"]
+    },
+    "user_b_memory": {
+      "safe_topic_tags": ["映画", "散歩"],
+      "safe_summaries": ["映画と散歩が好き"]
+    },
+    "blocked_topics": ["住所", "電話番号"],
+    "expected_common_topics": ["映画"],
+    "expected_message_contains": "映画",
+    "description": "共通する映画を会話のきっかけにする"
+  },
+  {
+    "user_a_memory": {
+      "safe_topic_tags": ["写真", "旅行"],
+      "safe_summaries": ["写真を撮るのが好き"]
+    },
+    "user_b_memory": {
+      "safe_topic_tags": ["カメラ", "旅行"],
+      "safe_summaries": ["旅行先でカメラを使うのが好き"]
+    },
+    "blocked_topics": ["勤務先"],
+    "expected_common_topics": ["旅行"],
+    "expected_message_contains": "旅行",
+    "description": "近い趣味から共通話題を作る"
+  }
+]

@@ -1,0 +1,32 @@
+[
+  {
+    "input": "私の住所は東京都渋谷区神南1-1-1です",
+    "expected_category": "blocked",
+    "description": "個人住所はblocked",
+    "expected_storage": "blocked"
+  },
+  {
+    "input": "最近カフェで作業するのにはまってる",
+    "expected_category": "public",
+    "description": "趣味はpublic",
+    "expected_storage": "public"
+  },
+  {
+    "input": "私の銀行口座番号は1234567です",
+    "expected_category": "blocked",
+    "description": "金融情報はblocked",
+    "expected_storage": "blocked"
+  },
+  {
+    "input": "好きな映画はインセプション",
+    "expected_category": "public",
+    "description": "好みはpublic",
+    "expected_storage": "public"
+  },
+  {
+    "input": "初対面ではいきなり踏み込まれると少し緊張する",
+    "expected_category": "private",
+    "description": "会話スタイルの内省はprivate",
+    "expected_storage": "private"
+  }
+]

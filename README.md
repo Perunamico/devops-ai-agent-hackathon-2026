@@ -246,16 +246,38 @@ curl -s $BASE/reports/$ANALYSIS_ID -H "$AUTH" | jq .
 
 ```bash
 cd backend
-pip install pytest pytest-asyncio httpx
-pytest tests/ -v
+python -m pip install -r requirements-dev.txt
+pytest -q
 ```
 
 | ファイル | テストケース |
 |---------|------------|
 | `test_health.py` | `GET /health` → 200 OK |
 | `test_memory_agent.py` | 電話番号→blocked、カフェ→public、LLMエラー→privateフォールバック |
-| `test_encounter_agent.py` | トークン発行、期限切れ（410）、双方承認でLLM2実行 |
+| `test_encounter_agent.py` | トークン発行、期限切れ、双方向照合でセッション成立 |
 | `test_topic_agent.py` | その場カード3枚生成、帰宅後レポート6種類生成 |
+| `test_prompt_regression/` | PetPersona / Memory / Encounter / Topic のゴールデンセット回帰テスト |
+
+### プロンプトリグレッションテスト
+
+プロンプト変更時に、4つのエージェントの入力・出力契約が崩れていないかをCIで検証します。
+
+```bash
+cd backend
+pytest tests/test_prompt_regression -q
+```
+
+ゴールデンセットは以下に配置します。
+
+```text
+backend/tests/test_prompt_regression/golden_sets/
+├── pet_persona_agent_cases.json
+├── memory_agent_cases.json
+├── encounter_agent_cases.json
+└── topic_agent_cases.json
+```
+
+CIでは実LLMを呼ばず、モックLLMでプロンプトに必要情報が入っていること、期待カテゴリ・カード種別・保存ルートが維持されることを確認します。
 
 ---
 
