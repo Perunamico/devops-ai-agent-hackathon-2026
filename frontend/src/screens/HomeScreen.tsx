@@ -375,8 +375,9 @@ export default function HomeScreen() {
   });
 
   return (
-    // ローディング中・命名中はナビ非表示のため全画面（h-svh）、active 時は通常高さ
-    <div className={`flex flex-col relative bg-white ${isLoading || phase === 'naming' ? 'h-svh' : 'h-[calc(100dvh-5rem)]'}`}>
+    // ローディング中のみ全画面（h-svh）。命名・active は同じ高さにして
+    // ペット・吹き出し・入力欄の表示位置を揃える（命名中はナビ分の余白を空ける）。
+    <div className={`flex flex-col relative bg-white ${isLoading ? 'h-svh' : 'h-[calc(100dvh-5rem)]'}`}>
 
       {/* ローディング中: fixed で全画面を覆い TopNav も含めて完全に隠す。
           canvas は DOM に残したまま ref を確保し、バックグラウンドでデコードを続ける。 */}
