@@ -301,3 +301,19 @@ gcloud run deploy ai-pet-api \
 | `feature/ai-pet-backend` | バックエンド + フロントエンド実装（本ブランチ） |
 | `feature/gemini-chat` | シンプルなGemini chatサンプル |
 | `feature/agent-test` | エージェントランタイムの実験 |
+
+---
+
+## CI/CD Automation
+
+GitHub Actions で以下を自動実行します。
+
+* frontend: `npm ci`, `npm run lint`, `npm run build`
+* backend: `pip install -r requirements-dev.txt`, `pytest -q`
+
+対象イベント:
+
+* `main` / `dev` 向け Pull Request
+* `main` / `dev` / `feature/**` への push
+
+今後 CD まで進める場合は、Firebase Hosting と Cloud Run のデプロイ先、GitHub Secrets、デプロイ対象ブランチを決める必要があります。
