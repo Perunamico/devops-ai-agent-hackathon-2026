@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
 import { sendChat, getReviewItems, createPet } from '../api';
 
@@ -252,20 +252,37 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // 指定アニメのプレイヤーを起動。hand 以外は1回再生後 hand（無限ループ）へ戻す。
+  const startAnim = useCallback((name: AnimName) => {
+    const player = playersRef.current[name];
+    if (!player) return;
+    player.start(ANIM_CONFIG[name].minLoops, () => {
+      // hand は無限ループのため onDone 不発。interlude（命名時の shake 含む）が
+      // 1回終わったら hand へ戻す。hand に戻ると無限ループで待機状態になる。
+      setCurrentAnim('hand');
+    });
+  }, []);
+
   // currentAnim が変わるたびに対応するプレイヤーを起動
   useEffect(() => {
     if (!coreReady) return;
     const player = playersRef.current[currentAnim];
     if (!player) return;
-
-    player.start(ANIM_CONFIG[currentAnim].minLoops, () => {
-      // hand は無限ループのため onDone 不発。interlude（命名時の shake 含む）が
-      // 1回終わったら hand へ戻す。hand に戻ると無限ループで待機状態になる。
-      setCurrentAnim('hand');
-    });
-
+    startAnim(currentAnim);
     return () => player.stop();
-  }, [currentAnim, coreReady]);
+  }, [currentAnim, coreReady, startAnim]);
+
+  // タブを離れて戻ったときに setTimeout 連鎖がスロットリング/フリーズで止まったままに
+  // なるため、可視状態へ復帰したら現在のアニメを再キックして再生を確実に復旧させる。
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible' && coreReady) {
+        startAnim(currentAnim);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [currentAnim, coreReady, startAnim]);
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
