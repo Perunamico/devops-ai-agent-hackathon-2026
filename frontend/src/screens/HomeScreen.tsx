@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
 import { sendChat, getReviewItems } from '../api';
 
@@ -232,20 +232,36 @@ export default function HomeScreen() {
     };
   }, []);
 
+  // 指定アニメのプレイヤーを起動。完了時に次のアニメへ遷移する。
+  const startAnim = useCallback((name: AnimName) => {
+    const player = playersRef.current[name];
+    if (!player) return;
+    player.start(ANIM_CONFIG[name].minLoops, () => {
+      if (name !== 'hand') lastAnimRef.current = name;
+      setCurrentAnim(pickNextAnim(name, lastAnimRef.current));
+    });
+  }, []);
+
   // currentAnim が変わるたびに対応するプレイヤーを起動
   useEffect(() => {
     if (!playersReady) return;
     const player = playersRef.current[currentAnim];
     if (!player) return;
-
-    player.start(ANIM_CONFIG[currentAnim].minLoops, () => {
-      if (currentAnim !== 'hand') lastAnimRef.current = currentAnim;
-      const next = pickNextAnim(currentAnim, lastAnimRef.current);
-      setCurrentAnim(next);
-    });
-
+    startAnim(currentAnim);
     return () => player.stop();
-  }, [currentAnim, playersReady]);
+  }, [currentAnim, playersReady, startAnim]);
+
+  // タブを離れて戻ったときに setTimeout 連鎖がスロットリング/フリーズで止まったままに
+  // なるため、可視状態へ復帰したら現在のアニメを再キックして再生を確実に復旧させる。
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible' && playersReady) {
+        startAnim(currentAnim);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [currentAnim, playersReady, startAnim]);
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
