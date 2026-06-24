@@ -201,6 +201,7 @@ export function createBroadcastExchange(opts: {
 
   let animId = 0;
   let stream: MediaStream | null = null;
+  let source: MediaStreamAudioSourceNode | null = null;
   let audioCtx: AudioContext | null = null;
   let stopped = false;
   let matched = false;
@@ -223,11 +224,23 @@ export function createBroadcastExchange(opts: {
     matched = true;
   }
 
+  // マイク（listening）だけを解放する。AudioContext は鳴く（送信）ために残す。
+  // 相手トークン受信後は「聞く」必要がなくなるため、ここでマイクを止めて
+  // タブのマイクオン表示を即座に消す。
+  function releaseMic() {
+    cancelAnimationFrame(animId);          // listening ループ停止
+    source?.disconnect();                  // analyser への接続を切る
+    source = null;
+    stream?.getTracks().forEach(t => t.stop()); // ← これでタブのマイク表示が消える
+    stream = null;
+  }
+
   function stop() {
+    if (stopped) return; // 二重呼び出しガード（onExhausted→step遷移useEffectで2回呼ばれ得る）
     stopped = true;
-    cancelAnimationFrame(animId);
-    stream?.getTracks().forEach(t => t.stop());
-    audioCtx?.close();
+    releaseMic();
+    if (audioCtx && audioCtx.state !== 'closed') audioCtx.close();
+    audioCtx = null;
     transmitting = false; // 半二重制御フラグのリセット（映像通知は UI 側の cleanup が担当）
   }
 
@@ -302,6 +315,7 @@ export function createBroadcastExchange(opts: {
           const ok = await awaitEnd(dataDuration + BC_END_ALPHA_MS);
           if (ok && rxPayload && !received) {
             received = true;
+            releaseMic(); // 受信完了＝聞く必要なし。マイクを即解放（鳴くのは audioCtx 継続）
             onPeerReceived(rxPayload);
           } else if (!ok) {
             rxReset();
@@ -346,7 +360,7 @@ export function createBroadcastExchange(opts: {
     }
 
     audioCtx = new AudioContext();
-    const source = audioCtx.createMediaStreamSource(stream);
+    source = audioCtx.createMediaStreamSource(stream);
     const analyser = audioCtx.createAnalyser();
     analyser.fftSize = FFT_SIZE;
     analyser.smoothingTimeConstant = 0.1;
