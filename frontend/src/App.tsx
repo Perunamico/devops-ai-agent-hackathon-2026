@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useState } from 'react';
 import type { PetResponse } from './types';
-import SetupScreen from './screens/SetupScreen';
 import HomeScreen from './screens/HomeScreen';
 import ReviewScreen from './screens/ReviewScreen';
 import ExchangeScreen from './screens/ExchangeScreen';
@@ -10,7 +9,7 @@ import AnalysisScreen from './screens/AnalysisScreen';
 import ReportScreen from './screens/ReportScreen';
 import PetExchangeScreen from './screens/PetExchangeScreen';
 
-type Screen = 'setup' | 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange';
+type Screen = 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange';
 type ExchangeSetupStep = null | 'mic' | 'requesting_mic' | 'volume';
 
 interface AppCtx {
@@ -26,12 +25,14 @@ interface AppCtx {
   setExchangeSetupStep: (step: ExchangeSetupStep) => void;
   homeLoading: boolean;
   setHomeLoading: (v: boolean) => void;
+  naming: boolean;
+  setNaming: (v: boolean) => void;
   reviewCount: number;
   setReviewCount: (n: number) => void;
 }
 
 export const AppContext = createContext<AppCtx>({
-  screen: 'setup',
+  screen: 'home',
   setScreen: () => {},
   pet: null,
   setPet: () => {},
@@ -43,6 +44,8 @@ export const AppContext = createContext<AppCtx>({
   setExchangeSetupStep: () => {},
   homeLoading: false,
   setHomeLoading: () => {},
+  naming: false,
+  setNaming: () => {},
   reviewCount: 0,
   setReviewCount: () => {},
 });
@@ -59,9 +62,9 @@ const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
 ];
 
 function TopNav() {
-  const { screen, setScreen, setExchangeSetupStep, homeLoading, reviewCount } = useApp();
+  const { screen, setScreen, setExchangeSetupStep, homeLoading, naming, reviewCount } = useApp();
 
-  if (homeLoading) return null;
+  if (homeLoading || naming) return null;
 
   if (screen !== 'home') {
     return (
@@ -111,12 +114,13 @@ export default function App() {
   const hasQrToken = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).has('exchangeToken')
     : false;
-  const [screen, setScreen] = useState<Screen>(hasQrToken ? 'exchange' : 'setup');
+  const [screen, setScreen] = useState<Screen>(hasQrToken ? 'exchange' : 'home');
   const [pet, setPet] = useState<PetResponse | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [exchangeSetupStep, setExchangeSetupStep] = useState<ExchangeSetupStep>(null);
   const [homeLoading, setHomeLoading] = useState(false);
+  const [naming, setNaming] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
 
   const ctx: AppCtx = {
@@ -127,6 +131,7 @@ export default function App() {
     exchangeSetupStep,
     setExchangeSetupStep,
     homeLoading, setHomeLoading,
+    naming, setNaming,
     reviewCount, setReviewCount,
   };
 
@@ -148,7 +153,6 @@ export default function App() {
 
   function renderScreen() {
     switch (screen) {
-      case 'setup': return <SetupScreen />;
       case 'home': return <HomeScreen />;
       case 'review': return <ReviewScreen />;
       case 'exchange': return <ExchangeScreen />;
@@ -161,8 +165,8 @@ export default function App() {
   return (
     <AppContext.Provider value={ctx}>
       <div className="max-w-md mx-auto min-h-svh relative bg-white">
-        {screen !== 'setup' && <TopNav />}
-        <div className={screen === 'setup' ? '' : (screen === 'home' && homeLoading) ? '' : screen === 'home' ? 'pt-20' : 'pt-14'}>
+        <TopNav />
+        <div className={(screen === 'home' && (homeLoading || naming)) ? '' : screen === 'home' ? 'pt-20' : 'pt-14'}>
           {renderScreen()}
         </div>
 

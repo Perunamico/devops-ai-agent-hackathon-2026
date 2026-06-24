@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
-import { sendChat, getReviewItems } from '../api';
+import { sendChat, getReviewItems, createPet } from '../api';
+
+const NAME_MAX = 12;
 
 type AnimName = 'hand' | 'stretch' | 'hand_stretch' | 'blink' | 'shake';
 
@@ -12,12 +14,14 @@ const ANIM_CONFIG: Record<AnimName, { minLoops: number; noConsecutive: boolean }
   shake:        { minLoops: 1, noConsecutive: true },
 };
 
+// hand と shake を先頭に置き、命名モードのイントロ（shake→hand）に必要な
+// フレームを優先デコードする。残り（interlude 用）は名前入力中に裏で揃う。
 const AVAILABLE_ANIMS: AnimName[] = [
   'hand',
+  'shake',
   'stretch',
   'hand_stretch',
   // 'blink',
-  'shake',
 ];
 
 const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
@@ -164,31 +168,45 @@ declare global {
 
 
 export default function HomeScreen() {
-  const { pet, setScreen, setHomeLoading, setReviewCount } = useApp();
+  const { pet, setPet, setHomeLoading, setNaming, setReviewCount } = useApp();
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [petBubble, setPetBubble] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  const [currentAnim, setCurrentAnim] = useState<AnimName>('hand');
+  // pet が未作成なら命名モード。名付け完了後に 'active' へ移行する。
+  const [phase, setPhase] = useState<'naming' | 'active'>(pet ? 'active' : 'naming');
+
+  const [currentAnim, setCurrentAnim] = useState<AnimName>(pet ? 'hand' : 'shake');
   const lastAnimRef = useRef<AnimName | null>(null);
   const canvasRefs = useRef<Partial<Record<AnimName, HTMLCanvasElement>>>({});
   const playersRef = useRef<Partial<Record<AnimName, AnimPlayer>>>({});
-  const allFramesRef = useRef<Partial<Record<AnimName, DecodedFrame[]>>>({});
-  const [playersReady, setPlayersReady] = useState(false);
+  // デコード済みアニメ集合。hand と shake が揃えばペット表示・イントロを開始できる。
+  const [decoded, setDecoded] = useState<Set<AnimName>>(new Set());
   const [useImgFallback, setUseImgFallback] = useState(false);
+
+  // hand と shake が揃えばコア準備完了（ローディング解除）。
+  const coreReady = useImgFallback || (decoded.has('hand') && decoded.has('shake'));
+  const isLoading = !coreReady;
 
   // ローディング状態を App（TopNav）に伝える
   useEffect(() => {
-    const loading = !playersReady && !useImgFallback;
-    setHomeLoading(loading);
+    setHomeLoading(isLoading);
     return () => setHomeLoading(false);
-  }, [playersReady, useImgFallback, setHomeLoading]);
+  }, [isLoading, setHomeLoading]);
 
+  // 命名モードを App（TopNav 非表示・全画面）に伝える
   useEffect(() => {
+    setNaming(phase === 'naming');
+    return () => setNaming(false);
+  }, [phase, setNaming]);
+
+  // レビュー件数の取得は pet 作成後（active）のみ
+  useEffect(() => {
+    if (phase !== 'active') return;
     getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
-  }, []);
+  }, [phase, setReviewCount]);
 
   // 起動時に全アニメーションのフレームをデコードしてプレイヤーを生成
   // frameCache にあれば再デコードを省略し、即座にプレイヤーを生成する
@@ -212,13 +230,18 @@ export default function HomeScreen() {
             frameCache[name] = frames;
           }
 
-          allFramesRef.current[name] = frames;
           const canvas = canvasRefs.current[name];
           if (canvas) {
             playersRef.current[name] = createPlayer(canvas, frames);
           }
+          // デコード完了を都度反映。hand/shake が揃った時点でイントロを開始でき、
+          // 残りの interlude は名前入力中に裏で揃う。
+          setDecoded((prev) => {
+            const next = new Set(prev);
+            next.add(name);
+            return next;
+          });
         }
-        if (!cancelled) setPlayersReady(true);
       } catch (err) {
         console.error('[HomeScreen] animation init failed, falling back to <img>:', err);
         if (!cancelled) setUseImgFallback(true);
@@ -234,18 +257,30 @@ export default function HomeScreen() {
 
   // currentAnim が変わるたびに対応するプレイヤーを起動
   useEffect(() => {
-    if (!playersReady) return;
+    if (!coreReady) return;
     const player = playersRef.current[currentAnim];
     if (!player) return;
 
-    player.start(ANIM_CONFIG[currentAnim].minLoops, () => {
+    // 命名モードでは hand を切り替えず固定ループさせる（Infinity ループ）。
+    const minLoops =
+      phase === 'naming' && currentAnim === 'hand'
+        ? Infinity
+        : ANIM_CONFIG[currentAnim].minLoops;
+
+    player.start(minLoops, () => {
+      if (phase === 'naming') {
+        // イントロ: shake 完了 → hand へ（hand 自身は Infinity で固定ループ）
+        if (currentAnim !== 'hand') setCurrentAnim('hand');
+        return;
+      }
       if (currentAnim !== 'hand') lastAnimRef.current = currentAnim;
       const next = pickNextAnim(currentAnim, lastAnimRef.current);
-      setCurrentAnim(next);
+      // 未デコードの interlude を選んだ場合は hand に戻す
+      setCurrentAnim(playersRef.current[next] ? next : 'hand');
     });
 
     return () => player.stop();
-  }, [currentAnim, playersReady]);
+  }, [currentAnim, coreReady, phase]);
 
   async function handleSubmit(e?: React.FormEvent) {
     e?.preventDefault();
@@ -261,6 +296,29 @@ export default function HomeScreen() {
       }
     } catch {
       setPetBubble('うまく聞き取れなかった...もう一度話しかけて！');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // 命名モードでの送信: ペットを作成して active モードへ移行
+  async function handleNameSubmit(e?: React.FormEvent) {
+    e?.preventDefault();
+    const name = content.trim().slice(0, NAME_MAX);
+    if (!name || submitting) return;
+    setSubmitting(true);
+    try {
+      const created = await createPet({
+        name,
+        personality: '元気で友好的',
+        tone: '自然体でカジュアル',
+      });
+      setPet(created);
+      setContent('');
+      setPetBubble(`おはよう！${created.name}だよ！`);
+      setPhase('active');
+    } catch {
+      setPetBubble('うーん、うまくいかなかった…もう一度試してみて！');
     } finally {
       setSubmitting(false);
     }
@@ -297,9 +355,10 @@ export default function HomeScreen() {
     (window.SpeechRecognition || window.webkitSpeechRecognition)
   );
 
-  const isLoading = !playersReady && !useImgFallback;
-
-  const bubbleText = petBubble ?? `おはよう！${pet?.name ?? 'ペット'}だよ！`;
+  const bubbleText =
+    phase === 'naming'
+      ? 'はじめまして！ぼくの名前をつけてくれる？'
+      : petBubble ?? `おはよう！${pet?.name ?? 'ペット'}だよ！`;
 
   const animStyle = (name: AnimName): React.CSSProperties => ({
     opacity: name === currentAnim ? 1 : 0,
@@ -312,8 +371,8 @@ export default function HomeScreen() {
   });
 
   return (
-    // isLoading 中は h-svh（ナビなし全画面）、完了後は通常高さ
-    <div className={`flex flex-col relative bg-white ${isLoading ? 'h-svh' : 'h-[calc(100dvh-5rem)]'}`}>
+    // ローディング中・命名中はナビ非表示のため全画面（h-svh）、active 時は通常高さ
+    <div className={`flex flex-col relative bg-white ${isLoading || phase === 'naming' ? 'h-svh' : 'h-[calc(100dvh-5rem)]'}`}>
 
       {/* ローディング中: fixed で全画面を覆い TopNav も含めて完全に隠す。
           canvas は DOM に残したまま ref を確保し、バックグラウンドでデコードを続ける。 */}
@@ -361,23 +420,40 @@ export default function HomeScreen() {
 
       {/* 入力エリア */}
       <div className="px-4 pb-6 flex-shrink-0">
-        <form onSubmit={handleSubmit} className="flex items-center gap-3">
+        {phase === 'naming' && (
+          /* 文字数カウンター: 上限が分かりやすいよう常時表示 */
+          <div className="flex justify-end px-2 mb-1">
+            <span
+              className={`text-xs tabular-nums ${
+                content.length >= NAME_MAX ? 'text-violet-600 font-semibold' : 'text-gray-400'
+              }`}
+            >
+              {content.length} / {NAME_MAX}
+            </span>
+          </div>
+        )}
+        <form
+          onSubmit={phase === 'naming' ? handleNameSubmit : handleSubmit}
+          className="flex items-center gap-3"
+        >
           <div className="flex-1 bg-white rounded-full px-5 py-3">
             <input
               type="text"
               value={content}
+              maxLength={phase === 'naming' ? NAME_MAX : undefined}
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  handleSubmit();
+                  if (phase === 'naming') handleNameSubmit();
+                  else handleSubmit();
                 }
               }}
-              placeholder="メッセージを入力..."
+              placeholder={phase === 'naming' ? `名前を入力（${NAME_MAX}文字まで）` : 'メッセージを入力...'}
               className="w-full outline-none text-sm text-gray-700 placeholder-gray-400 bg-transparent"
             />
           </div>
-          {hasSpeechAPI && (
+          {phase === 'active' && hasSpeechAPI && (
             <button
               onClick={toggleListening}
               type="button"
@@ -399,10 +475,19 @@ export default function HomeScreen() {
             type="submit"
             disabled={!content.trim() || submitting}
             className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-violet-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
-            aria-label="送信"
+            aria-label={phase === 'naming' ? '名前を決める' : '送信'}
           >
             {submitting ? (
               <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            ) : phase === 'naming' ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="white"
+                className="w-6 h-6"
+              >
+                <path fillRule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clipRule="evenodd" />
+              </svg>
             ) : (
               <svg
                 xmlns="http://www.w3.org/2000/svg"
