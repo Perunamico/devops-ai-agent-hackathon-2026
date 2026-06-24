@@ -34,6 +34,101 @@ const ERROR_MESSAGES: Record<ErrorKind, string> = {
 const POLL_INTERVAL_MS = 2000;
 const WAIT_TIMEOUT_MS = 90000;
 
+// ---- 交流中アニメーション ----
+
+type ExchangeAnimName = 'interact_normal' | 'interact_happy';
+
+interface DecodedExchangeFrame {
+  bitmap: ImageBitmap;
+  durationMs: number;
+}
+
+interface ExchangeAnimPlayer {
+  start(minLoops: number, onDone: () => void): void;
+  stop(): void;
+}
+
+// アンマウント時に破棄するため HomeScreen の frameCache とは別管理
+const exchangeFrameCache: Partial<Record<ExchangeAnimName, DecodedExchangeFrame[]>> = {};
+
+const EXCHANGE_ANIM_CONFIG: Record<ExchangeAnimName, { minLoops: number }> = {
+  interact_normal: { minLoops: 3 },
+  interact_happy:  { minLoops: 1 },
+};
+
+function pickNextExchangeAnim(current: ExchangeAnimName): ExchangeAnimName {
+  return current === 'interact_normal' ? 'interact_happy' : 'interact_normal';
+}
+
+// 交流を辞めたタイミング（バイバイ・諦める・アンマウント）でのみ呼ぶ。
+// gating エフェクトの cleanup では呼ばない（StrictMode 二重実行でキャッシュが消える事故を防ぐ）。
+function disposeExchangeFrames(): void {
+  for (const name of ['interact_normal', 'interact_happy'] as ExchangeAnimName[]) {
+    exchangeFrameCache[name]?.forEach(f => f.bitmap.close());
+    delete exchangeFrameCache[name];
+  }
+}
+
+async function decodeExchangeFrames(name: ExchangeAnimName): Promise<DecodedExchangeFrame[]> {
+  const res = await fetch(`/webp/${name}.webp`);
+  const blob = await res.blob();
+  const buffer = await blob.arrayBuffer();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const decoder = new (window as any).ImageDecoder({ data: buffer, type: 'image/webp' });
+  await decoder.tracks.ready;
+  const frameCount: number = decoder.tracks.selectedTrack.frameCount;
+  const frames: DecodedExchangeFrame[] = [];
+  for (let i = 0; i < frameCount; i++) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { image } = await decoder.decode({ frameIndex: i }) as { image: any };
+    const durationMs: number = (image.duration ?? 100000) / 1000;
+    const offscreen = new OffscreenCanvas(image.displayWidth, image.displayHeight);
+    offscreen.getContext('2d')!.drawImage(image, 0, 0);
+    image.close();
+    frames.push({ bitmap: await createImageBitmap(offscreen), durationMs });
+  }
+  decoder.close();
+  return frames;
+}
+
+function createExchangePlayer(
+  canvas: HTMLCanvasElement,
+  frames: DecodedExchangeFrame[],
+): ExchangeAnimPlayer {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  const ctx = canvas.getContext('2d')!;
+  if (frames.length > 0) {
+    canvas.width  = frames[0].bitmap.width;
+    canvas.height = frames[0].bitmap.height;
+  }
+  function stop() {
+    stopped = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+  }
+  function step(fi: number, loops: number, minLoops: number, onDone: () => void): void {
+    if (stopped || frames.length === 0) return;
+    const { bitmap, durationMs } = frames[fi];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(bitmap, 0, 0);
+    const next = fi + 1;
+    if (next >= frames.length) {
+      const nextLoops = loops + 1;
+      if (nextLoops >= minLoops) {
+        timer = setTimeout(onDone, durationMs);
+      } else {
+        timer = setTimeout(() => step(0, nextLoops, minLoops, onDone), durationMs);
+      }
+    } else {
+      timer = setTimeout(() => step(next, loops, minLoops, onDone), durationMs);
+    }
+  }
+  return {
+    start(minLoops, onDone) { stop(); stopped = false; step(0, 0, minLoops, onDone); },
+    stop,
+  };
+}
+
 export default function ExchangeScreen() {
   const { setScreen, setSessionId, setAnalysisId } = useApp();
   const [step, setStep] = useState<ExchangeStep>('exchanging');
@@ -51,6 +146,13 @@ export default function ExchangeScreen() {
   const receivedRef = useRef(false); // 相手トークン受信済みフラグ（リスニング停止用）
   const resolvedRef = useRef(false); // 双方照合完了フラグ（送信ループ停止用）
   const exchangingVideoRef = useRef<HTMLVideoElement>(null);
+
+  // 交流中アニメーション用
+  const [currentExchangeAnim, setCurrentExchangeAnim] = useState<ExchangeAnimName>('interact_normal');
+  const [exchangePlayersReady, setExchangePlayersReady] = useState(false);
+  const [useExchangeImgFallback, setUseExchangeImgFallback] = useState(false);
+  const exchangeCanvasRefs = useRef<Partial<Record<ExchangeAnimName, HTMLCanvasElement>>>({});
+  const exchangePlayersRef = useRef<Partial<Record<ExchangeAnimName, ExchangeAnimPlayer>>>({});
 
   // 交流探索フェーズ（鳴き声の送受信中）が終わったらマイクを確実にOFF。
   // resolving/waiting は受信後も双方成立まで鳴き続けるフェーズなので止めない。
@@ -81,10 +183,58 @@ export default function ExchangeScreen() {
     resolvedRef.current = false;
     setShowQR(false);
     setQrLoading(false);
+    // 交流中アニメーションの後片付け（バイバイ・諦める・リトライ・アンマウント時）
+    Object.values(exchangePlayersRef.current).forEach(p => p?.stop());
+    exchangePlayersRef.current = {};
+    setExchangePlayersReady(false);
+    setUseExchangeImgFallback(false);
+    setCurrentExchangeAnim('interact_normal');
+    disposeExchangeFrames();
   }, []);
 
   // コンポーネントアンマウント時にクリーンアップ
   useEffect(() => () => cleanup(), [cleanup]);
+
+  // session_active になったらフレームキャッシュからプレイヤーを生成。
+  // 重要: cleanup ではプレイヤー停止のみ行い、キャッシュ削除や ready のリセットはしない。
+  // （StrictMode の mount→cleanup→mount 二重実行でキャッシュが消えると再生不能になるため）
+  useEffect(() => {
+    if (step !== 'session_active') return;
+    // フォールバック描画時は canvas プレイヤー不要
+    if (useExchangeImgFallback) return;
+    const names: ExchangeAnimName[] = ['interact_normal', 'interact_happy'];
+    let allReady = true;
+    for (const name of names) {
+      const frames = exchangeFrameCache[name];
+      const canvas = exchangeCanvasRefs.current[name];
+      if (frames && canvas) {
+        exchangePlayersRef.current[name] = createExchangePlayer(canvas, frames);
+      } else {
+        allReady = false;
+      }
+    }
+    // フレームが揃わなかった場合は img フォールバックへ切り替える
+    if (!allReady) {
+      setUseExchangeImgFallback(true);
+      return;
+    }
+    setExchangePlayersReady(true);
+    return () => {
+      Object.values(exchangePlayersRef.current).forEach(p => p?.stop());
+      exchangePlayersRef.current = {};
+    };
+  }, [step, useExchangeImgFallback]);
+
+  // currentExchangeAnim が変わるたびに対応プレイヤーを起動（HomeScreen と同パターン）
+  useEffect(() => {
+    if (!exchangePlayersReady) return;
+    const player = exchangePlayersRef.current[currentExchangeAnim];
+    if (!player) return;
+    player.start(EXCHANGE_ANIM_CONFIG[currentExchangeAnim].minLoops, () => {
+      setCurrentExchangeAnim(pickNextExchangeAnim(currentExchangeAnim));
+    });
+    return () => { player.stop(); };
+  }, [currentExchangeAnim, exchangePlayersReady]);
 
   // QRスキャンから開いた場合（User B側）: URLに exchangeToken があれば自動処理
   useEffect(() => {
@@ -214,11 +364,27 @@ export default function ExchangeScreen() {
 
   async function loadSession(sessionId: string) {
     try {
-      const session = await getSession(sessionId);
+      // ImageDecoder 非対応ブラウザは <img> フォールバックで再生する
+      const canDecode = 'ImageDecoder' in window;
+      // セッション取得とアニメーションフレームのデコードを並列実行。
+      // デコードが失敗（or 非対応）の場合はフォールバックフラグを立てる。
+      const decodePromise = canDecode
+        ? (async () => {
+            for (const name of ['interact_normal', 'interact_happy'] as ExchangeAnimName[]) {
+              if (!exchangeFrameCache[name]) {
+                exchangeFrameCache[name] = await decodeExchangeFrames(name);
+              }
+            }
+            return true;
+          })().catch(() => false)
+        : Promise.resolve(false);
+      const [session, decoded] = await Promise.all([getSession(sessionId), decodePromise]);
+      setUseExchangeImgFallback(!decoded);
       setSessionData(session);
       setSessionId(sessionId);
       if (session.analysis_id) setAnalysisId(session.analysis_id);
-      setStep('session_active');
+      setCurrentExchangeAnim('interact_normal'); // 必ず normal から開始
+      setStep('session_active');  // フレームロード完了後に遷移
       watchSession(sessionId);
     } catch {
       setErrorKind('generic');
@@ -461,12 +627,43 @@ export default function ExchangeScreen() {
     const isEnded = sessionData?.status === 'ended' && sessionData?.ended_by !== undefined;
     return (
       <div className="flex flex-col items-center min-h-[70vh] px-4 pt-6 gap-6">
-        {/* 交流中動画プレースホルダー */}
-        <div className="w-full aspect-square max-w-[240px] bg-gradient-to-br from-green-100 to-emerald-200 rounded-3xl flex items-center justify-center">
-          <div className="text-center space-y-2">
-            <div className="text-5xl">🤝</div>
-            <p className="text-xs text-green-600 font-medium">交流中！</p>
-          </div>
+        {/* 交流中アニメーション（ロード完了後に遷移するためプレースホルダは不要）*/}
+        <div className="relative w-full flex-shrink-0" style={{ height: '280px' }}>
+          {useExchangeImgFallback
+            ? /* ImageDecoder 非対応 / デコード失敗: img で WebP をそのまま表示 */
+              (['interact_normal', 'interact_happy'] as ExchangeAnimName[]).map(name => (
+                <img
+                  key={name}
+                  src={`/webp/${name}.webp`}
+                  alt=""
+                  className="absolute"
+                  style={{
+                    opacity: name === currentExchangeAnim ? 1 : 0,
+                    height: '100%',
+                    width: 'auto',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translateX(-50%) translateY(-50%)',
+                  }}
+                />
+              ))
+            : /* ImageDecoder 対応: 事前デコード済みフレームを canvas に描画 */
+              (['interact_normal', 'interact_happy'] as ExchangeAnimName[]).map(name => (
+                <canvas
+                  key={name}
+                  ref={el => { if (el) exchangeCanvasRefs.current[name] = el; }}
+                  className="absolute"
+                  style={{
+                    opacity: exchangePlayersReady && name === currentExchangeAnim ? 1 : 0,
+                    height: '100%',
+                    width: 'auto',
+                    left: '50%',
+                    top: '50%',
+                    transform: 'translateX(-50%) translateY(-50%)',
+                  }}
+                />
+              ))
+          }
         </div>
 
         {isEnded ? (
