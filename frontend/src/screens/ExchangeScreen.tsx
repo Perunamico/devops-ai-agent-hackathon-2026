@@ -235,16 +235,35 @@ export default function ExchangeScreen() {
     };
   }, [step, useExchangeImgFallback]);
 
+  // 指定アニメのプレイヤーを起動。完了時に次のアニメへ遷移する。
+  const startExchangeAnim = useCallback((name: ExchangeAnimName) => {
+    const player = exchangePlayersRef.current[name];
+    if (!player) return;
+    player.start(EXCHANGE_ANIM_CONFIG[name].minLoops, () => {
+      setCurrentExchangeAnim(pickNextExchangeAnim(name));
+    });
+  }, []);
+
   // currentExchangeAnim が変わるたびに対応プレイヤーを起動（HomeScreen と同パターン）
   useEffect(() => {
     if (!exchangePlayersReady) return;
     const player = exchangePlayersRef.current[currentExchangeAnim];
     if (!player) return;
-    player.start(EXCHANGE_ANIM_CONFIG[currentExchangeAnim].minLoops, () => {
-      setCurrentExchangeAnim(pickNextExchangeAnim(currentExchangeAnim));
-    });
+    startExchangeAnim(currentExchangeAnim);
     return () => { player.stop(); };
-  }, [currentExchangeAnim, exchangePlayersReady]);
+  }, [currentExchangeAnim, exchangePlayersReady, startExchangeAnim]);
+
+  // タブを離れて戻ったときに setTimeout 連鎖が止まったままになるため、可視状態へ復帰したら
+  // 現在のアニメを再キックして再生を確実に復旧させる。
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible' && exchangePlayersReady) {
+        startExchangeAnim(currentExchangeAnim);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [currentExchangeAnim, exchangePlayersReady, startExchangeAnim]);
 
   // QRスキャンから開いた場合（User B側）: URLに exchangeToken があれば自動処理
   useEffect(() => {
