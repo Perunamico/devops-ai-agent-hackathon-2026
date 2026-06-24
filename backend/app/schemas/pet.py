@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 
 
 class PetCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=12)
     personality: str = Field(..., max_length=200)
     tone: str = Field(..., max_length=200)
 
