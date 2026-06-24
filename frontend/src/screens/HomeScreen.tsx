@@ -371,7 +371,7 @@ export default function HomeScreen() {
                 }
               }}
               placeholder="メッセージを入力..."
-              className="w-full outline-none text-base text-gray-700 placeholder-gray-400 bg-transparent"
+              className="w-full border-0 outline-none text-base text-gray-700 placeholder-gray-400 bg-transparent"
             />
           </div>
           {hasSpeechAPI && (
