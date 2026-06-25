@@ -40,6 +40,9 @@ body {
   min-height: 100svh;
 }
 
+/* ペット映像の高さ。ホーム・命名・鳴き声通信で共通に使う */
+:root { --pet-size: 48vh; }
+
 .fixed { position: fixed; }
 .absolute { position: absolute; }
 .relative { position: relative; }
@@ -293,8 +296,8 @@ body {
   position: absolute;
   left: 50%;
   top: 50%;
-  height: 70vh;
-  transform: translate(-50%, -55%);
+  height: var(--pet-size);
+  transform: translate(-50%, -50%);
 }
 .bark-img {
   display: block;

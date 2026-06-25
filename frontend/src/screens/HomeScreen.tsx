@@ -300,11 +300,11 @@ export default function HomeScreen() {
 
   const animStyle = (name: AnimName): React.CSSProperties => ({
     opacity: name === currentAnim ? 1 : 0,
-    height: '70vh',
+    height: 'var(--pet-size)',
     width: 'auto',
     left: '50%',
     top: '50%',
-    transform: 'translateX(-50%) translateY(-55%)',
+    transform: 'translateX(-50%) translateY(-50%)',
     position: 'absolute',
   });
 
