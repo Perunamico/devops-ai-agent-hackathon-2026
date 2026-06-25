@@ -15,7 +15,7 @@ const ANIM_CONFIG: Record<AnimName, { minLoops: number; noConsecutive: boolean }
 };
 
 // hand と shake を先頭に置き、命名モードのイントロ（shake→hand）に必要な
-// フレームを優先デコードする。残り（interlude 用）は名前入力中に裏で揃う。
+// フレームを優先デコードする（全アニメのデコードは読み込み画面の間に完了させる）。
 const AVAILABLE_ANIMS: AnimName[] = [
   'hand',
   'shake',
@@ -182,12 +182,13 @@ export default function HomeScreen() {
   const lastAnimRef = useRef<AnimName | null>(null);
   const canvasRefs = useRef<Partial<Record<AnimName, HTMLCanvasElement>>>({});
   const playersRef = useRef<Partial<Record<AnimName, AnimPlayer>>>({});
-  // デコード済みアニメ集合。hand と shake が揃えばペット表示・イントロを開始できる。
+  // デコード済みアニメ集合。
   const [decoded, setDecoded] = useState<Set<AnimName>>(new Set());
   const [useImgFallback, setUseImgFallback] = useState(false);
 
-  // hand と shake が揃えばコア準備完了（ローディング解除）。
-  const coreReady = useImgFallback || (decoded.has('hand') && decoded.has('shake'));
+  // 全アニメのデコード（キャッシュ化）を最初の読み込み画面の間に完了させる。
+  // すべて揃ってからローディングを解除し、以降は裏でのデコードを発生させない。
+  const coreReady = useImgFallback || AVAILABLE_ANIMS.every((n) => decoded.has(n));
   const isLoading = !coreReady;
 
   // ローディング状態を App（TopNav）に伝える
@@ -234,8 +235,7 @@ export default function HomeScreen() {
           if (canvas) {
             playersRef.current[name] = createPlayer(canvas, frames);
           }
-          // デコード完了を都度反映。hand/shake が揃った時点でイントロを開始でき、
-          // 残りの interlude は名前入力中に裏で揃う。
+          // デコード完了を都度反映。全アニメが揃うとローディングが解除される。
           setDecoded((prev) => {
             const next = new Set(prev);
             next.add(name);
