@@ -390,7 +390,10 @@ export default function HomeScreen() {
 
       {/* 表札: 画面最上部（命名完了後のみ。専用クラス .nameplate のみ） */}
       {!isLoading && phase === 'active' && (
-        <div className="nameplate">{`${pet?.name ?? 'ペット'}のお部屋`}</div>
+        <div className="nameplate">
+          <img src="/icons/plate.png" alt="" />
+          <span>{`${pet?.name ?? 'ペット'}のお部屋`}</span>
+        </div>
       )}
 
       {/* アニメーション: canvas は常に DOM に存在させて ref を確保 */}
