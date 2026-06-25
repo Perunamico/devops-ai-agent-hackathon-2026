@@ -52,10 +52,10 @@ export function useApp() {
 }
 
 const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
-  { screen: 'petexchange', label: 'ペット交流', iconImg: '/icons/interact.png' },
-  { screen: 'exchange',    label: 'ペット友達', iconImg: '/icons/friends.png'  },
-  { screen: 'review',      label: '飼い主の秘密', iconImg: '/icons/secrets.png'  },
-  { screen: 'report',      label: '設定',       iconImg: '/icons/settings.png' },
+  { screen: 'petexchange', label: 'あそぶ',   iconImg: '/icons/interact.png' },
+  { screen: 'exchange',    label: 'ともだち', iconImg: '/icons/friends.png'  },
+  { screen: 'review',      label: 'ひみつ',   iconImg: '/icons/secrets.png'  },
+  { screen: 'report',      label: '設定',     iconImg: '/icons/settings.png' },
 ];
 
 function TopNav() {
