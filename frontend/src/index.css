@@ -41,7 +41,7 @@ body {
 }
 
 /* ペット映像の高さ。ホーム・命名・鳴き声通信で共通に使う */
-:root { --pet-size: 48vh; }
+:root { --pet-size: 40vh; }
 
 .fixed { position: fixed; }
 .absolute { position: absolute; }
@@ -287,7 +287,7 @@ body {
   text-align: center;
   font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
   font-weight: 800;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   letter-spacing: 0.02em;
   color: #3a9fe0; /* 水色に近い青 */
   white-space: nowrap;
