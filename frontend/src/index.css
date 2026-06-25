@@ -49,6 +49,8 @@ body {
 .right-0 { right: 0; }
 .z-50 { z-index: 50; }
 
+.invisible { visibility: hidden; }
+
 .block { display: block; }
 .flex { display: flex; }
 .flex-col { flex-direction: column; }

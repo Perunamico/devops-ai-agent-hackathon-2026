@@ -421,18 +421,21 @@ export default function HomeScreen() {
 
       {/* 入力エリア */}
       <div className="px-4 pb-6 flex-shrink-0">
-        {phase === 'naming' && (
-          /* 文字数カウンター: 上限が分かりやすいよう常時表示 */
-          <div className="flex justify-end px-2 mb-1">
-            <span
-              className={`text-xs tabular-nums ${
-                content.length >= NAME_MAX ? 'text-violet-600 font-semibold' : 'text-gray-400'
-              }`}
-            >
-              {content.length} / {NAME_MAX}
-            </span>
-          </div>
-        )}
+        {/* 文字数カウンター: 命名時のみ表示。active でも同じ高さの行を確保して
+            ペット・吹き出しの縦位置をホームと揃える（active は invisible で非表示）。 */}
+        <div className="flex justify-end px-2 mb-1">
+          <span
+            className={`text-xs tabular-nums ${
+              phase !== 'naming'
+                ? 'invisible'
+                : content.length >= NAME_MAX
+                ? 'text-violet-600 font-semibold'
+                : 'text-gray-400'
+            }`}
+          >
+            {content.length} / {NAME_MAX}
+          </span>
+        </div>
         <form
           onSubmit={phase === 'naming' ? handleNameSubmit : handleSubmit}
           className="flex items-center gap-3"
