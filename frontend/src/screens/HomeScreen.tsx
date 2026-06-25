@@ -321,6 +321,11 @@ export default function HomeScreen() {
         </div>
       )}
 
+      {/* 表札: 画面最上部（専用クラス .nameplate のみ） */}
+      {!isLoading && (
+        <div className="nameplate">{`${pet?.name ?? 'ペット'}のお部屋`}</div>
+      )}
+
       {/* アニメーション: canvas は常に DOM に存在させて ref を確保 */}
       <div className="flex-1 min-h-0 relative overflow-visible">
         {useImgFallback
@@ -357,7 +362,7 @@ export default function HomeScreen() {
       </div>
 
       {/* 入力エリア */}
-      <div className="px-4 pb-6 flex-shrink-0">
+      <div className="px-4 pb-2 flex-shrink-0">
         <form onSubmit={handleSubmit} className="flex items-center gap-3">
           <div className="flex-1 flex items-center bg-gray-100 rounded-full px-5 py-3 border border-gray-200 shadow-sm focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-100 focus-within:bg-white transition-colors">
             <input

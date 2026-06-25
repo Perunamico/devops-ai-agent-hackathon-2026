@@ -259,6 +259,28 @@ body {
 .animate-spin { animation: spin 1s linear infinite; }
 .animate-bounce { animation: bounce 1s infinite; }
 
+/* ホーム最上部「{ペット名}のお部屋」表札プレート（専用クラス・ユーティリティ非使用） */
+.nameplate {
+  flex-shrink: 0;
+  align-self: center;
+  margin: 0.85rem auto 0.35rem;
+  padding: 0.45rem 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: linear-gradient(180deg, #ffffff 0%, #f5f3ff 100%);
+  border: 2px solid #c4b5fd; /* violet-300 */
+  border-radius: 0.9rem;
+  box-shadow: 0 3px 8px rgba(124, 58, 237, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  color: #6d28d9; /* violet-700 */
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.nameplate::before,
+.nameplate::after { content: "🐾"; font-size: 0.9em; opacity: 0.65; }
+
 /* 交流モード・鳴き声エフェクト: hand.webp ループの上に「音波＋音符」をCSSで重ねる。
    外側 .bark-pet がセンタリング、内側 .bark-img が映像。 */
 .bark-pet {
