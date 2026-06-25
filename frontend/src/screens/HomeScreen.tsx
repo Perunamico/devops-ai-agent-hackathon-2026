@@ -357,7 +357,7 @@ export default function HomeScreen() {
       {/* 吹き出し・入力エリアはローディング完了後のみ表示 */}
       {!isLoading && <>
       {/* 吹き出し */}
-      <div className="relative mx-6 mb-3 flex-shrink-0">
+      <div className="relative mx-6 mb-1 flex-shrink-0">
         <img src="/icons/flame.png" className="w-full" alt="" />
         <div className="absolute inset-0 flex items-center justify-center px-10">
           <p className="text-sm text-gray-800 text-center leading-relaxed">{bubbleText}</p>

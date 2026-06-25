@@ -52,6 +52,9 @@ body {
 .left-0 { left: 0; }
 .right-0 { right: 0; }
 .z-50 { z-index: 50; }
+.z-40 { z-index: 40; }
+
+.invisible { visibility: hidden; }
 
 .block { display: block; }
 .flex { display: flex; }
@@ -266,9 +269,9 @@ body {
 .nameplate {
   position: relative;
   flex-shrink: 0;
-  align-self: center;
-  width: 230px;
-  margin: 0.5rem auto 0.15rem;
+  align-self: stretch; /* 横幅いっぱい */
+  width: auto;
+  margin: 0.5rem 0.75rem 0.1rem; /* 左右に少しだけ余白 */
 }
 .nameplate img {
   display: block;
@@ -279,12 +282,12 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  top: 63%; /* 肉球の下、プレート中央付近 */
+  top: 63%; /* 肉球の下、プレート中央付近。新plateに合わせ微調整可 */
   transform: translateY(-50%);
   text-align: center;
   font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
   font-weight: 800;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   letter-spacing: 0.02em;
   color: #3a9fe0; /* 水色に近い青 */
   white-space: nowrap;
