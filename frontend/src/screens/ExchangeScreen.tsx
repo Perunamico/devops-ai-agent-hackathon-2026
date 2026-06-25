@@ -518,9 +518,16 @@ export default function ExchangeScreen() {
   if (step === 'exchanging' || step === 'failed' || step === 'resolving' || step === 'waiting') {
     return (
       <div
-        className="flex flex-col bg-white relative"
-        style={{ height: 'calc(100svh - 3.5rem)' }}
+        className="flex flex-col bg-white fixed top-0 left-0 right-0 max-w-md mx-auto z-40"
+        style={{ height: 'calc(100dvh - 5rem)' }}
       >
+        {/* 縦位置をホーム画面と厳密一致させるための疑似表札（非表示・高さのみ確保）。
+            上部の戻りバー(z-50)はこの空きスロット上に重なって表示される。 */}
+        <div className="nameplate invisible">
+          <img src="/icons/plate.png" alt="" />
+          <span>ペットのお部屋</span>
+        </div>
+
         {/* 映像: HomeScreen の flex-1 と同一構造。全状態 hand.webp ループに統一し、
             鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。 */}
         <div className="flex-1 min-h-0 relative">
@@ -560,7 +567,7 @@ export default function ExchangeScreen() {
         </div>
 
         {/* HomeScreen の吹き出しエリアと同一クラス → 高さが一致 */}
-        <div className="relative mx-6 mb-3 flex-shrink-0">
+        <div className="relative mx-6 mb-1 flex-shrink-0">
           <img src="/icons/flame.png" className="w-full" alt="" />
           {/* キャッシュ化(デコード)完了前は準備中を表示し、開始後に波形へ切り替える */}
           {step === 'exchanging' && !showQR && !exchangeStarted && (
@@ -593,7 +600,7 @@ export default function ExchangeScreen() {
         </div>
 
         {/* HomeScreen の入力エリアと同一クラス → 高さが一致 */}
-        <div className="px-4 pb-6 flex-shrink-0 flex items-center justify-center">
+        <div className="px-4 pb-2 flex-shrink-0 flex items-center justify-center">
           {(step === 'exchanging' || step === 'failed') ? (
             showQR ? (
               <button

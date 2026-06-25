@@ -388,9 +388,9 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* 表札: 画面最上部（命名完了後のみ。専用クラス .nameplate のみ） */}
-      {!isLoading && phase === 'active' && (
-        <div className="nameplate">
+      {/* 表札: 画面最上部。命名中は invisible で高さだけ確保しホームと縦位置を厳密一致 */}
+      {!isLoading && (
+        <div className={`nameplate${phase === 'active' ? '' : ' invisible'}`}>
           <img src="/icons/plate.png" alt="" />
           <span>{`${pet?.name ?? 'ペット'}のお部屋`}</span>
         </div>
@@ -423,7 +423,7 @@ export default function HomeScreen() {
 
       {/* セリフ枠: ペット映像と入力欄の間 */}
       {!isLoading && (
-        <div className="relative mx-6 mb-2 flex-shrink-0">
+        <div className="relative mx-6 mb-1 flex-shrink-0">
           <img src="/icons/flame.png" className="w-full" alt="" />
           <div className="absolute inset-0 flex items-center justify-center px-10">
             <p className="text-sm text-gray-800 text-center leading-relaxed">{bubbleText}</p>
