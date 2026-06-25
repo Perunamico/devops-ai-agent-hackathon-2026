@@ -321,9 +321,12 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* 表札: 画面最上部（専用クラス .nameplate のみ） */}
+      {/* 表札: 画面最上部（plate.png 画像＋文字オーバーレイ） */}
       {!isLoading && (
-        <div className="nameplate">{`${pet?.name ?? 'ペット'}のお部屋`}</div>
+        <div className="nameplate">
+          <img src="/icons/plate.png" alt="" />
+          <span>{`${pet?.name ?? 'ペット'}のお部屋`}</span>
+        </div>
       )}
 
       {/* アニメーション: canvas は常に DOM に存在させて ref を確保 */}
