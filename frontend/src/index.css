@@ -301,12 +301,16 @@ body {
   left: 50%;
   top: 50%;
   height: var(--pet-size);
+  max-height: 100%; /* PC等で領域を超えないよう上限（HomeScreen と同条件） */
+  max-width: 100%;
   transform: translate(-50%, -50%);
 }
 .bark-img {
   display: block;
   height: 100%;
   width: auto;
+  max-width: 100%;
+  object-fit: contain;
 }
 
 /* 下のほうから広がる紫の音波リング（2本を delay 違いで連続発火） */

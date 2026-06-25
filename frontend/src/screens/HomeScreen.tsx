@@ -368,6 +368,10 @@ export default function HomeScreen() {
     opacity: name === currentAnim ? 1 : 0,
     height: 'var(--pet-size)',
     width: 'auto',
+    // PC など縦が短い/カラム幅が広い環境で flex-1 を超えないよう上限を付ける
+    // （スマホは 40vh < 領域なので発火せず従来どおり）
+    maxHeight: '100%',
+    maxWidth: '100%',
     left: '50%',
     top: '50%',
     transform: 'translateX(-50%) translateY(-50%)',
