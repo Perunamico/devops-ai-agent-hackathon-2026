@@ -71,9 +71,9 @@ function TopNav() {
       <nav className="fixed top-0 left-0 right-0 bg-white flex items-center px-4 z-50 max-w-md mx-auto h-14" style={{ willChange: 'transform' }}>
         <button
           onClick={() => setScreen('home')}
-          className="flex items-center gap-1.5 text-gray-600 text-sm font-medium"
+          className="flex items-center gap-1.5 text-gray-900 text-sm font-medium"
         >
-          <img src="/icons/home.png" className="w-5 h-5 object-contain" alt="" />
+          <img src="/icons/home.png" className="w-8 h-8 object-contain" alt="" />
           ホーム
         </button>
       </nav>
@@ -173,7 +173,7 @@ export default function App() {
           <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40" style={{ willChange: 'transform' }}>
             <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl">
               <div className="text-center space-y-2">
-                <img src="/icons/mic.png" className="w-16 h-16 mx-auto object-contain" alt="" />
+                <img src="/icons/mic.png" className="w-10 h-10 mx-auto object-contain" alt="" />
                 <h2 className="text-lg font-bold text-gray-900">マイクをONにしてください</h2>
                 <p className="text-sm text-gray-500">鳴き声を使って近くのペットを探します</p>
               </div>
@@ -200,7 +200,7 @@ export default function App() {
           <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40" style={{ willChange: 'transform' }}>
             <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl">
               <div className="flex flex-col items-center gap-3">
-                <img src="/icons/mic.png" className="w-16 h-16 object-contain animate-pulse" alt="" />
+                <img src="/icons/mic.png" className="w-10 h-10 object-contain animate-pulse" alt="" />
                 <p className="text-gray-600 text-sm">マイクの許可を確認中...</p>
               </div>
             </div>
@@ -212,7 +212,7 @@ export default function App() {
           <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40" style={{ willChange: 'transform' }}>
             <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-5 shadow-2xl">
               <div className="text-center space-y-2">
-                <img src="/icons/sound.png" className="w-16 h-16 mx-auto object-contain" alt="" />
+                <img src="/icons/sound.png" className="w-10 h-10 mx-auto object-contain" alt="" />
                 <h2 className="text-lg font-bold text-gray-900">音量を調整してください</h2>
                 <p className="text-sm text-gray-500">端末の音量を上げて、相手の端末に近づけてください</p>
               </div>
