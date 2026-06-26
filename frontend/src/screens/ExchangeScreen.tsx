@@ -549,7 +549,7 @@ export default function ExchangeScreen() {
               <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-[calc(100%-2rem)] shadow-lg">
                 {qrLoading || !tokenData ? (
                   <>
-                    <div className="text-4xl animate-pulse">📷</div>
+                    <img src="/icons/qr.png" className="w-10 h-10 object-contain animate-pulse" alt="" />
                     <p className="text-xs text-gray-500">QRコードを準備中...</p>
                   </>
                 ) : (
@@ -630,7 +630,8 @@ export default function ExchangeScreen() {
                     onClick={handleQR}
                     className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
                   >
-                    📷 QRコードを使う
+                    <img src="/icons/qr.png" className="w-5 h-5 object-contain" alt="" />
+                    QRコードを使う
                   </button>
                 ))}
               {/* resolving/waiting はボタン無し（高さはスケルトンが担保） */}
