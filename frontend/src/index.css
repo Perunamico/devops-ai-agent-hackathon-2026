@@ -310,6 +310,9 @@ body {
   max-height: 100%; /* HomeScreen と同条件: PC等で領域を超えないよう上限 */
   max-width: 100%;
   display: block;
+  object-fit: contain;
+  /* video 化で白背景の不透明矩形になるため、音波/音符を確実に前面へ出す基準にする */
+  z-index: 1;
 }
 .bark-pet {
   position: absolute;
@@ -317,10 +320,11 @@ body {
   top: 50%;
   transform: translate(-50%, -50%);
   height: var(--pet-size);
-  aspect-ratio: 1 / 1; /* hand.webp は正方形。映像と同じ大きさにしてエフェクト位置を一致させる */
+  aspect-ratio: 1 / 1; /* hand は正方形。映像と同じ大きさにしてエフェクト位置を一致させる */
   max-height: 100%;
   max-width: 100%;
   pointer-events: none;
+  z-index: 2; /* 音波/音符を映像(video)より前面へ */
 }
 
 /* 下のほうから広がる紫の音波リング（2本を delay 違いで連続発火） */
@@ -334,6 +338,7 @@ body {
   border: 3px solid rgba(167, 139, 250, 0.7); /* violet-400 */
   pointer-events: none;
   opacity: 0;
+  z-index: 2;
   transform: translate(-50%, -50%) scale(0.4);
   animation: bark-ripple 0.9s ease-out infinite;
 }
@@ -351,6 +356,7 @@ body {
   line-height: 1;
   pointer-events: none;
   opacity: 0;
+  z-index: 2;
   animation: bark-note 1.4s ease-out infinite;
 }
 .bark-note-1 { left: 26%; top: 66%; animation-delay: 0s;    }
