@@ -514,9 +514,10 @@ export default function ExchangeScreen() {
               <span className="bark-note bark-note-3">♬</span>
             </div>
           )}
-          {/* QRカード: 映像上に overlay（下部高さを変えない）*/}
+          {/* QRカード: 映像上に overlay（下部高さを変えない）。
+              映像(.bark-img z-index:1)・エフェクト(.bark-pet z-index:2)より前面に出す。 */}
           {showQR && (
-            <div className="absolute inset-0 flex items-end justify-center pb-4">
+            <div className="absolute inset-0 flex items-end justify-center pb-4" style={{ zIndex: 10 }}>
               <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-[calc(100%-2rem)] shadow-lg">
                 {qrLoading || !tokenData ? (
                   <>
