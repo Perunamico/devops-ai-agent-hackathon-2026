@@ -142,12 +142,13 @@ export default function HomeScreen() {
   const playersRef = useRef<Partial<Record<AnimName, AnimPlayer>>>({});
   // mp4 再生不可のブラウザでは <img> で WebP アニメをそのまま表示するフォールバック。
   const [useImgFallback, setUseImgFallback] = useState(false);
-  // 最初の動画が再生可能になったらローディングを解除する。
-  const [ready, setReady] = useState(false);
 
-  // 動画は HW デコードで即時再生できるため、最初の1本が読めた時点でローディング解除。
-  const coreReady = useImgFallback || ready;
-  const isLoading = !coreReady;
+  // 動画は再生(play)実行時に読み込まれる。iOS Safari は preload を無視し play 前は
+  // loadeddata が発火しないため、ローディングで動画読み込みを待つと永久に解除されない
+  // （読み込み→loadeddata→play→読み込み の循環デッドロック）。
+  // よってローディングは出さず、currentAnim の play() に読み込みを任せる。
+  const coreReady = true;
+  const isLoading = false;
 
   // mp4 非対応ブラウザは <img>(WebP) フォールバックへ切り替える。
   useEffect(() => {
@@ -359,7 +360,6 @@ export default function HomeScreen() {
                 muted
                 playsInline
                 preload="auto"
-                onLoadedData={() => setReady(true)}
                 className="absolute"
                 style={animStyle(name)}
               />
