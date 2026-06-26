@@ -311,6 +311,9 @@ body {
   width: auto;
   max-width: 100%;
   object-fit: contain;
+  /* video 化で白背景の不透明矩形になるため、音波/音符を確実に前面へ出す基準にする */
+  position: relative;
+  z-index: 1;
 }
 
 /* 下のほうから広がる紫の音波リング（2本を delay 違いで連続発火） */
@@ -324,6 +327,7 @@ body {
   border: 3px solid rgba(167, 139, 250, 0.7); /* violet-400 */
   pointer-events: none;
   opacity: 0;
+  z-index: 2;
   transform: translate(-50%, -50%) scale(0.4);
   animation: bark-ripple 0.9s ease-out infinite;
 }
@@ -341,6 +345,7 @@ body {
   line-height: 1;
   pointer-events: none;
   opacity: 0;
+  z-index: 2;
   animation: bark-note 1.4s ease-out infinite;
 }
 .bark-note-1 { left: 26%; top: 66%; animation-delay: 0s;    }

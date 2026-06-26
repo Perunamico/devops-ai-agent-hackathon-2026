@@ -31,100 +31,61 @@ function pickInterlude(): AnimName {
   return INTERLUDE_ANIMS[Math.floor(Math.random() * INTERLUDE_ANIMS.length)];
 }
 
-// --- ImageDecoder を使ったフレーム事前デコード + canvas アニメーション ---
-// blob.stream() は一度しか読めないため、全フレームを ImageBitmap として
-// 起動時にメモリへ展開しておく。ループはビットマップ配列の繰り返しで実現。
-// frameCache はモジュールレベルで保持することで、画面遷移後の再マウント時に
-// 再デコードを省略し、ローディング画面を出さずに済む。
-const frameCache: Partial<Record<AnimName, DecodedFrame[]>> = {};
-
-interface DecodedFrame {
-  bitmap: ImageBitmap;
-  durationMs: number;
-}
+// --- <video>(白背景 mp4) ベースのアニメーション ---
+// 以前は WebP を ImageDecoder で全フレーム展開して canvas に描画していたが、
+// 1024px 級の全フレーム ImageBitmap 常駐がスマホのメモリ/デコードを圧迫していた。
+// ブラウザの HW 動画デコードに任せることで軽量・vsync 同期の滑らかな再生にする。
 
 interface AnimPlayer {
   start(minLoops: number, onDone: () => void): void;
   stop(): void;
 }
 
-function createPlayer(canvas: HTMLCanvasElement, frames: DecodedFrame[]): AnimPlayer {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let stopped = false;
-  const ctx = canvas.getContext('2d')!;
+// 無限ループ(minLoops=Infinity)は loop 属性で再生し続ける。
+// 有限回は loop=false + ended イベント + カウンタで minLoops 回数を数え onDone を発火する。
+function createVideoPlayer(video: HTMLVideoElement): AnimPlayer {
+  let onEnded: (() => void) | null = null;
 
-  if (frames.length > 0) {
-    canvas.width = frames[0].bitmap.width;
-    canvas.height = frames[0].bitmap.height;
+  function detach() {
+    if (onEnded) {
+      video.removeEventListener('ended', onEnded);
+      onEnded = null;
+    }
   }
 
   function stop() {
-    stopped = true;
-    if (timer) { clearTimeout(timer); timer = null; }
-  }
-
-  function step(fi: number, loops: number, minLoops: number, onDone: () => void): void {
-    if (stopped || frames.length === 0) return;
-
-    const { bitmap, durationMs } = frames[fi];
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0);
-
-    const nextFi = fi + 1;
-    if (nextFi >= frames.length) {
-      // 1ループ完了
-      const nextLoops = loops + 1;
-      if (nextLoops >= minLoops) {
-        timer = setTimeout(onDone, durationMs);
-      } else {
-        timer = setTimeout(() => step(0, nextLoops, minLoops, onDone), durationMs);
-      }
-    } else {
-      timer = setTimeout(() => step(nextFi, loops, minLoops, onDone), durationMs);
-    }
+    detach();
+    video.loop = false;
+    video.pause();
   }
 
   return {
     start(minLoops, onDone) {
-      stop();
-      stopped = false;
-      step(0, 0, minLoops, onDone);
+      detach();
+      video.currentTime = 0;
+      if (minLoops === Infinity) {
+        video.loop = true;
+        // play() の Promise は高速切替時に AbortError で reject されるため握りつぶす
+        video.play().catch(() => {});
+        return;
+      }
+      video.loop = false;
+      let loops = 0;
+      onEnded = () => {
+        loops += 1;
+        if (loops >= minLoops) {
+          detach();
+          onDone();
+        } else {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+        }
+      };
+      video.addEventListener('ended', onEnded);
+      video.play().catch(() => {});
     },
     stop,
   };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function decodeAllFrames(name: AnimName): Promise<DecodedFrame[]> {
-  const res = await fetch(`/webp/${name}.webp`);
-  const blob = await res.blob();
-  // ArrayBuffer で渡すと全データが即座に利用可能になり、任意フレームへのシークが可能
-  const buffer = await blob.arrayBuffer();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const decoder = new (window as any).ImageDecoder({ data: buffer, type: 'image/webp' });
-  await decoder.tracks.ready;
-
-  const frameCount: number = decoder.tracks.selectedTrack.frameCount;
-  const frames: DecodedFrame[] = [];
-
-  for (let i = 0; i < frameCount; i++) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: { image: any } = await decoder.decode({ frameIndex: i });
-    const frame = result.image;
-    // マイクロ秒 → ミリ秒。WebP の ANMF フレーム遅延値そのまま使用。
-    const durationMs: number = (frame.duration ?? 100000) / 1000;
-    // VideoFrame → ImageBitmap の変換。
-    // createImageBitmap(VideoFrame) は実装依存があるため OffscreenCanvas を経由する。
-    const offscreen = new OffscreenCanvas(frame.displayWidth, frame.displayHeight);
-    offscreen.getContext('2d')!.drawImage(frame, 0, 0);
-    frame.close();
-    const bitmap = await createImageBitmap(offscreen);
-    frames.push({ bitmap, durationMs });
-  }
-
-  decoder.close();
-  return frames;
 }
 
 declare global {
@@ -177,16 +138,23 @@ export default function HomeScreen() {
 
   // 命名モードは shake から開始（1回再生後 hand へ。hand は無限ループ）。
   const [currentAnim, setCurrentAnim] = useState<AnimName>(pet ? 'hand' : 'shake');
-  const canvasRefs = useRef<Partial<Record<AnimName, HTMLCanvasElement>>>({});
+  const videoRefs = useRef<Partial<Record<AnimName, HTMLVideoElement>>>({});
   const playersRef = useRef<Partial<Record<AnimName, AnimPlayer>>>({});
-  // デコード済みアニメ集合。
-  const [decoded, setDecoded] = useState<Set<AnimName>>(new Set());
+  // mp4 再生不可のブラウザでは <img> で WebP アニメをそのまま表示するフォールバック。
   const [useImgFallback, setUseImgFallback] = useState(false);
+  // 最初の動画が再生可能になったらローディングを解除する。
+  const [ready, setReady] = useState(false);
 
-  // 全アニメのデコード（キャッシュ化）を最初の読み込み画面の間に完了させる。
-  // すべて揃ってからローディングを解除し、以降は裏でのデコードを発生させない。
-  const coreReady = useImgFallback || AVAILABLE_ANIMS.every((n) => decoded.has(n));
+  // 動画は HW デコードで即時再生できるため、最初の1本が読めた時点でローディング解除。
+  const coreReady = useImgFallback || ready;
   const isLoading = !coreReady;
+
+  // mp4 非対応ブラウザは <img>(WebP) フォールバックへ切り替える。
+  useEffect(() => {
+    if (!document.createElement('video').canPlayType('video/mp4')) {
+      setUseImgFallback(true);
+    }
+  }, []);
 
   // ローディング状態を App（TopNav）に伝える
   useEffect(() => {
@@ -206,49 +174,11 @@ export default function HomeScreen() {
     getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
   }, [phase, setReviewCount]);
 
-  // 起動時に全アニメーションのフレームをデコードしてプレイヤーを生成
-  // frameCache にあれば再デコードを省略し、即座にプレイヤーを生成する
+  // アンマウント時に全プレイヤーを停止（再生中の video を pause）。
   useEffect(() => {
-    if (!('ImageDecoder' in window)) {
-      setUseImgFallback(true);
-      return;
-    }
-
-    let cancelled = false;
-
-    (async () => {
-      try {
-        for (const name of AVAILABLE_ANIMS) {
-          if (cancelled) break;
-
-          let frames = frameCache[name];
-          if (!frames) {
-            frames = await decodeAllFrames(name);
-            if (cancelled) break;
-            frameCache[name] = frames;
-          }
-
-          const canvas = canvasRefs.current[name];
-          if (canvas) {
-            playersRef.current[name] = createPlayer(canvas, frames);
-          }
-          // デコード完了を都度反映。全アニメが揃うとローディングが解除される。
-          setDecoded((prev) => {
-            const next = new Set(prev);
-            next.add(name);
-            return next;
-          });
-        }
-      } catch (err) {
-        console.error('[HomeScreen] animation init failed, falling back to <img>:', err);
-        if (!cancelled) setUseImgFallback(true);
-      }
-    })();
-
+    const players = playersRef.current;
     return () => {
-      cancelled = true;
-      // プレイヤーのみ停止。ImageBitmap は frameCache に残すため close しない。
-      Object.values(playersRef.current).forEach((p) => p?.stop());
+      Object.values(players).forEach((p) => p?.stop());
     };
   }, []);
 
@@ -400,10 +330,10 @@ export default function HomeScreen() {
         </div>
       )}
 
-      {/* アニメーション: canvas は常に DOM に存在させて ref を確保 */}
+      {/* アニメーション: video は常に DOM に存在させて ref を確保し、表示中のものだけ再生 */}
       <div className="flex-1 min-h-0 relative overflow-visible">
         {useImgFallback
-          ? /* ImageDecoder 非対応ブラウザ: img で WebP をそのまま表示 */
+          ? /* mp4 非対応ブラウザ: img で WebP をそのまま表示 */
             AVAILABLE_ANIMS.map((name) => (
               <img
                 key={name}
@@ -413,11 +343,23 @@ export default function HomeScreen() {
                 style={animStyle(name)}
               />
             ))
-          : /* ImageDecoder 対応ブラウザ: 事前デコード済みフレームを canvas に描画 */
+          : /* mp4 対応ブラウザ: 白背景 mp4 を <video> で再生 */
             AVAILABLE_ANIMS.map((name) => (
-              <canvas
+              <video
                 key={name}
-                ref={(el) => { if (el) canvasRefs.current[name] = el; }}
+                ref={(el) => {
+                  if (!el) return;
+                  videoRefs.current[name] = el;
+                  el.muted = true; // React は muted 属性を反映しないことがあるため保険
+                  if (!playersRef.current[name]) {
+                    playersRef.current[name] = createVideoPlayer(el);
+                  }
+                }}
+                src={`/movie/${name}.mp4`}
+                muted
+                playsInline
+                preload="auto"
+                onLoadedData={() => setReady(true)}
                 className="absolute"
                 style={animStyle(name)}
               />
