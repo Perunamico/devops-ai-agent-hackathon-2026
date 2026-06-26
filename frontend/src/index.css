@@ -297,22 +297,29 @@ body {
 }
 
 /* 交流モード・鳴き声エフェクト: hand.webp ループの上に「音波＋音符」をCSSで重ねる。
-   外側 .bark-pet がセンタリング、内側 .bark-img が映像。 */
+   .bark-img が映像本体（HomeScreen の animStyle と完全に同一指定）、
+   .bark-pet は鳴きエフェクトのアンカー（ペット映像と同サイズの正方形ボックス）。 */
+.bark-img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  height: var(--pet-size);
+  width: auto;
+  max-height: 100%; /* HomeScreen と同条件: PC等で領域を超えないよう上限 */
+  max-width: 100%;
+  display: block;
+}
 .bark-pet {
   position: absolute;
   left: 50%;
   top: 50%;
-  height: var(--pet-size);
-  max-height: 100%; /* PC等で領域を超えないよう上限（HomeScreen と同条件） */
-  max-width: 100%;
   transform: translate(-50%, -50%);
-}
-.bark-img {
-  display: block;
-  height: 100%;
-  width: auto;
+  height: var(--pet-size);
+  aspect-ratio: 1 / 1; /* hand.webp は正方形。映像と同じ大きさにしてエフェクト位置を一致させる */
+  max-height: 100%;
   max-width: 100%;
-  object-fit: contain;
+  pointer-events: none;
 }
 
 /* 下のほうから広がる紫の音波リング（2本を delay 違いで連続発火） */

@@ -528,21 +528,21 @@ export default function ExchangeScreen() {
           <span>ペットのお部屋</span>
         </div>
 
-        {/* 映像: HomeScreen の flex-1 と同一構造。全状態 hand.webp ループに統一し、
-            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。 */}
-        <div className="flex-1 min-h-0 relative">
-          <div className="bark-pet">
-            <img src="/webp/hand.webp" alt="" className="bark-img" />
-            {barking && (
-              <>
-                <span className="bark-ripple" />
-                <span className="bark-ripple bark-ripple-delay" />
-                <span className="bark-note bark-note-1">♪</span>
-                <span className="bark-note bark-note-2">♫</span>
-                <span className="bark-note bark-note-3">♬</span>
-              </>
-            )}
-          </div>
+        {/* 映像: HomeScreen の flex-1 と同一構造（overflow-visible も一致）。全状態 hand.webp ループに統一し、
+            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。
+            映像本体(.bark-img)は HomeScreen の animStyle と同一指定でサイズ/位置を厳密一致させ、
+            エフェクトは映像と同サイズの .bark-pet アンカーに分離する。 */}
+        <div className="flex-1 min-h-0 relative overflow-visible">
+          <img src="/webp/hand.webp" alt="" className="bark-img" />
+          {barking && (
+            <div className="bark-pet">
+              <span className="bark-ripple" />
+              <span className="bark-ripple bark-ripple-delay" />
+              <span className="bark-note bark-note-1">♪</span>
+              <span className="bark-note bark-note-2">♫</span>
+              <span className="bark-note bark-note-3">♬</span>
+            </div>
+          )}
           {/* QRカード: 映像上に overlay（下部高さを変えない）*/}
           {showQR && (
             <div className="absolute inset-0 flex items-end justify-center pb-4">
