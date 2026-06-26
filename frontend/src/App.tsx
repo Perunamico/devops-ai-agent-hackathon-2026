@@ -8,8 +8,9 @@ import ExchangeScreen from './screens/ExchangeScreen';
 import AnalysisScreen from './screens/AnalysisScreen';
 import ReportScreen from './screens/ReportScreen';
 import PetExchangeScreen from './screens/PetExchangeScreen';
+import FriendsScreen from './screens/FriendsScreen';
 
-type Screen = 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange';
+type Screen = 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange' | 'friends';
 type ExchangeSetupStep = null | 'mic' | 'requesting_mic' | 'volume';
 
 interface AppCtx {
@@ -56,7 +57,7 @@ export function useApp() {
 
 const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
   { screen: 'petexchange', label: 'あそぶ',   iconImg: '/icons/interact.png' },
-  { screen: 'exchange',    label: 'ともだち', iconImg: '/icons/friends.png'  },
+  { screen: 'friends',     label: 'ともだち', iconImg: '/icons/friends.png'  },
   { screen: 'review',      label: 'ひみつ',   iconImg: '/icons/secrets.png'  },
   { screen: 'report',      label: '設定',     iconImg: '/icons/settings.png' },
 ];
@@ -87,7 +88,6 @@ function TopNav() {
           key={item.screen}
           onClick={() => {
             if (item.screen === 'petexchange') setExchangeSetupStep('mic');
-            else if (item.screen === 'exchange') setScreen('exchange');
             else setScreen(item.screen);
           }}
           className="flex-1 flex flex-col items-center justify-center gap-1 bg-gray-50 border border-gray-200 shadow-sm rounded-2xl transition-all"
@@ -156,6 +156,7 @@ export default function App() {
       case 'analysis': return <AnalysisScreen />;
       case 'report': return <ReportScreen />;
       case 'petexchange': return <PetExchangeScreen />;
+      case 'friends': return <FriendsScreen />;
     }
   }
 
