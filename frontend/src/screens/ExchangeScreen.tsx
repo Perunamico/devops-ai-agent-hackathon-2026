@@ -514,13 +514,15 @@ export default function ExchangeScreen() {
               <span className="bark-note bark-note-3">♬</span>
             </div>
           )}
-          {/* QRカード: 映像上に overlay（下部高さを変えない）*/}
+          {/* QRカード: 映像エリア(flex-1)内に中央配置し、映像とちょうど同じ範囲に収める
+              （下寄せだと上部バーに被るため中央寄せ）。
+              映像(.bark-img z-index:1)・エフェクト(.bark-pet z-index:2)より前面に出す。 */}
           {showQR && (
-            <div className="absolute inset-0 flex items-end justify-center pb-4">
+            <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 10 }}>
               <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-[calc(100%-2rem)] shadow-lg">
                 {qrLoading || !tokenData ? (
                   <>
-                    <div className="text-4xl animate-pulse">📷</div>
+                    <img src="/icons/qr.png" className="w-10 h-10 object-contain animate-pulse" alt="" />
                     <p className="text-xs text-gray-500">QRコードを準備中...</p>
                   </>
                 ) : (
@@ -601,7 +603,8 @@ export default function ExchangeScreen() {
                     onClick={handleQR}
                     className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
                   >
-                    📷 QRコードを使う
+                    <img src="/icons/qr.png" className="w-5 h-5 object-contain" alt="" />
+                    QRコードを使う
                   </button>
                 ))}
               {/* resolving/waiting はボタン無し（高さはスケルトンが担保） */}
