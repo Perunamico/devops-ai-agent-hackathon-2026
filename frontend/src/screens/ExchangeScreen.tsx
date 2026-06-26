@@ -485,34 +485,35 @@ export default function ExchangeScreen() {
           <span>ペットのお部屋</span>
         </div>
 
-        {/* 映像: HomeScreen の flex-1 と同一構造。全状態 hand ループに統一し、
-            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。 */}
-        <div className="flex-1 min-h-0 relative">
-          <div className="bark-pet">
-            {useExchangeImgFallback ? (
-              <img src="/webp/hand.webp" alt="" className="bark-img" />
-            ) : (
-              <video
-                ref={el => { if (el) el.muted = true; }}
-                src="/movie/hand.mp4"
-                muted
-                playsInline
-                autoPlay
-                loop
-                preload="auto"
-                className="bark-img"
-              />
-            )}
-            {barking && (
-              <>
-                <span className="bark-ripple" />
-                <span className="bark-ripple bark-ripple-delay" />
-                <span className="bark-note bark-note-1">♪</span>
-                <span className="bark-note bark-note-2">♫</span>
-                <span className="bark-note bark-note-3">♬</span>
-              </>
-            )}
-          </div>
+        {/* 映像: HomeScreen の flex-1 と同一構造（overflow-visible も一致）。全状態 hand ループに統一し、
+            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。
+            映像本体(.bark-img)は HomeScreen の animStyle と同一指定でサイズ/位置を厳密一致させ、
+            エフェクトは映像と同サイズの .bark-pet アンカーに分離する。
+            映像は白背景 mp4 を <video> で再生し、mp4 非対応時のみ WebP <img> にフォールバック。 */}
+        <div className="flex-1 min-h-0 relative overflow-visible">
+          {useExchangeImgFallback ? (
+            <img src="/webp/hand.webp" alt="" className="bark-img" />
+          ) : (
+            <video
+              ref={el => { if (el) el.muted = true; }}
+              src="/movie/hand.mp4"
+              muted
+              playsInline
+              autoPlay
+              loop
+              preload="auto"
+              className="bark-img"
+            />
+          )}
+          {barking && (
+            <div className="bark-pet">
+              <span className="bark-ripple" />
+              <span className="bark-ripple bark-ripple-delay" />
+              <span className="bark-note bark-note-1">♪</span>
+              <span className="bark-note bark-note-2">♫</span>
+              <span className="bark-note bark-note-3">♬</span>
+            </div>
+          )}
           {/* QRカード: 映像上に overlay（下部高さを変えない）*/}
           {showQR && (
             <div className="absolute inset-0 flex items-end justify-center pb-4">
@@ -569,28 +570,43 @@ export default function ExchangeScreen() {
           )}
         </div>
 
-        {/* HomeScreen の入力エリアと同一クラス → 高さが一致 */}
-        <div className="px-4 pb-2 flex-shrink-0 flex items-center justify-center">
-          {(step === 'exchanging' || step === 'failed') ? (
-            showQR ? (
-              <button
-                onClick={handleBackToVoice}
-                className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
-              >
-                🎵 鳴き声に戻る
-              </button>
-            ) : (
-              <button
-                onClick={handleQR}
-                className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
-              >
-                📷 QRコードを使う
-              </button>
-            )
-          ) : (
-            // resolving/waiting はボタンを出さないが高さは維持する
-            <div className="h-12" />
-          )}
+        {/* HomeScreen の入力エリアと厳密に同じ高さにする（映像・セリフ枠の縦位置/サイズを一致させるため）。
+            home の「カウンター行 + フォーム行」を不可視スケルトンで再現して高さを確保し、
+            交流用ボタンを中央に重ねる。 */}
+        <div className="px-4 pb-2 flex-shrink-0">
+          {/* (a) home の active カウンター行と同一・不可視（高さ確保のみ） */}
+          <div className="flex justify-end px-2 mb-1">
+            <span className="text-xs invisible">0 / 0</span>
+          </div>
+
+          {/* (b) home のフォーム行と同一マークアップの不可視スケルトンで高さを確保し、実ボタンを中央に重ねる */}
+          <div className="relative">
+            <div className="flex items-center gap-3 invisible" aria-hidden="true">
+              <div className="flex-1 flex items-center bg-gray-100 rounded-full px-5 py-3 border border-gray-200 shadow-sm">
+                <input className="w-full border-0 outline-none text-base bg-transparent" tabIndex={-1} readOnly />
+              </div>
+              <div className="w-12 h-12" />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              {(step === 'exchanging' || step === 'failed') &&
+                (showQR ? (
+                  <button
+                    onClick={handleBackToVoice}
+                    className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+                  >
+                    🎵 鳴き声に戻る
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleQR}
+                    className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+                  >
+                    📷 QRコードを使う
+                  </button>
+                ))}
+              {/* resolving/waiting はボタン無し（高さはスケルトンが担保） */}
+            </div>
+          </div>
         </div>
 
         {/* 交流失敗ポップ: will-change:transform で GPU レイヤーに昇格し video の上に合成 */}

@@ -73,7 +73,7 @@ function TopNav() {
           onClick={() => setScreen('home')}
           className="flex items-center gap-1.5 text-gray-900 text-sm font-medium"
         >
-          <img src="/icons/home.png" className="w-8 h-8 object-contain" alt="" />
+          <img src="/icons/home.png" className="w-10 h-10 object-contain" alt="" />
           ホーム
         </button>
       </nav>
