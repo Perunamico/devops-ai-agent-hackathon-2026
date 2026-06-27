@@ -1,5 +1,48 @@
-from typing import Literal
+from typing import Literal, get_args
 from pydantic import BaseModel
+
+# 大カテゴリーは固定リスト（EncounterAgent の共通点照合のブレを抑える）。
+# 中・小カテゴリーは自由記述。プロンプト側の一覧とこの定義を一致させること。
+CategoryLarge = Literal[
+    "エンタメ",
+    "音楽",
+    "ゲーム",
+    "食・グルメ",
+    "スポーツ・運動",
+    "旅行・おでかけ",
+    "アート・創作",
+    "学び・自己啓発",
+    "テクノロジー",
+    "自然・アウトドア",
+    "暮らし・日常",
+    "ファッション・美容",
+    "人間関係・コミュニティ",
+    "仕事・キャリア",
+    "その他",
+]
+LARGE_CATEGORIES: list[str] = list(get_args(CategoryLarge))
+
+ContentLabel = Literal[
+    "reason", "emotion", "context", "social_mode", "boundary", "example", "related_topic"
+]
+Shareability = Literal["ok", "summary_only", "private", "unknown"]
+Confidence = Literal["low", "medium", "high"]
+
+
+class ContentItem(BaseModel):
+    label: ContentLabel
+    content: str
+    shareability: Shareability = "unknown"
+    confidence: Confidence = "low"
+
+
+class PreferenceProfile(BaseModel):
+    topic: str = ""
+    category_large: CategoryLarge = "その他"
+    category_medium: str = ""
+    category_small: str = ""
+    preference: Literal["like", "interested", "dislike", "conditional"] = "interested"
+    contents: list[ContentItem] = []
 
 
 class MemoryClassifyResult(BaseModel):
@@ -11,6 +54,7 @@ class MemoryClassifyResult(BaseModel):
     safe_summary: str = ""
     blocked_reason: str = ""
     review_reason: str = ""
+    profiles: list[PreferenceProfile] = []
 
 
 class PublicMemoryResponse(BaseModel):
