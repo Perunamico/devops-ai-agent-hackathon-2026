@@ -9,8 +9,9 @@ import AnalysisScreen from './screens/AnalysisScreen';
 import ReportScreen from './screens/ReportScreen';
 import PetExchangeScreen from './screens/PetExchangeScreen';
 import FriendsScreen from './screens/FriendsScreen';
+import SettingsScreen from './screens/SettingsScreen';
 
-type Screen = 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange' | 'friends';
+type Screen = 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange' | 'friends' | 'settings';
 type ExchangeSetupStep = null | 'mic' | 'requesting_mic' | 'volume';
 
 interface AppCtx {
@@ -59,7 +60,7 @@ const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
   { screen: 'petexchange', label: 'あそぶ',   iconImg: '/icons/interact.png' },
   { screen: 'friends',     label: 'ともだち', iconImg: '/icons/friends.png'  },
   { screen: 'review',      label: 'ひみつ',   iconImg: '/icons/secrets.png'  },
-  { screen: 'report',      label: '設定',     iconImg: '/icons/settings.png' },
+  { screen: 'settings',    label: '設定',     iconImg: '/icons/settings.png' },
 ];
 
 function TopNav() {
@@ -157,6 +158,7 @@ export default function App() {
       case 'report': return <ReportScreen />;
       case 'petexchange': return <PetExchangeScreen />;
       case 'friends': return <FriendsScreen />;
+      case 'settings': return <SettingsScreen />;
     }
   }
 
