@@ -38,18 +38,10 @@ const WAIT_TIMEOUT_MS = 90000;
 
 type ExchangeAnimName = 'interact_normal' | 'interact_happy';
 
-interface DecodedExchangeFrame {
-  bitmap: ImageBitmap;
-  durationMs: number;
-}
-
 interface ExchangeAnimPlayer {
   start(minLoops: number, onDone: () => void): void;
   stop(): void;
 }
-
-// アンマウント時に破棄するため HomeScreen の frameCache とは別管理
-const exchangeFrameCache: Partial<Record<ExchangeAnimName, DecodedExchangeFrame[]>> = {};
 
 const EXCHANGE_ANIM_CONFIG: Record<ExchangeAnimName, { minLoops: number }> = {
   interact_normal: { minLoops: 3 },
@@ -60,75 +52,47 @@ function pickNextExchangeAnim(current: ExchangeAnimName): ExchangeAnimName {
   return current === 'interact_normal' ? 'interact_happy' : 'interact_normal';
 }
 
-// 交流を辞めたタイミング（バイバイ・諦める・アンマウント）でのみ呼ぶ。
-// gating エフェクトの cleanup では呼ばない（StrictMode 二重実行でキャッシュが消える事故を防ぐ）。
-function disposeExchangeFrames(): void {
-  for (const name of ['interact_normal', 'interact_happy'] as ExchangeAnimName[]) {
-    exchangeFrameCache[name]?.forEach(f => f.bitmap.close());
-    delete exchangeFrameCache[name];
-  }
-}
+// HomeScreen と同じく <video>(白背景 mp4) ベース。有限回は ended + カウンタで minLoops を数える。
+function createExchangeVideoPlayer(video: HTMLVideoElement): ExchangeAnimPlayer {
+  let onEnded: (() => void) | null = null;
 
-async function decodeWebpFrames(url: string): Promise<DecodedExchangeFrame[]> {
-  const res = await fetch(url);
-  const blob = await res.blob();
-  const buffer = await blob.arrayBuffer();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const decoder = new (window as any).ImageDecoder({ data: buffer, type: 'image/webp' });
-  await decoder.tracks.ready;
-  const frameCount: number = decoder.tracks.selectedTrack.frameCount;
-  const frames: DecodedExchangeFrame[] = [];
-  for (let i = 0; i < frameCount; i++) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { image } = await decoder.decode({ frameIndex: i }) as { image: any };
-    const durationMs: number = (image.duration ?? 100000) / 1000;
-    const offscreen = new OffscreenCanvas(image.displayWidth, image.displayHeight);
-    offscreen.getContext('2d')!.drawImage(image, 0, 0);
-    image.close();
-    frames.push({ bitmap: await createImageBitmap(offscreen), durationMs });
-  }
-  decoder.close();
-  return frames;
-}
-
-function decodeExchangeFrames(name: ExchangeAnimName): Promise<DecodedExchangeFrame[]> {
-  return decodeWebpFrames(`/webp/${name}.webp`);
-}
-
-function createExchangePlayer(
-  canvas: HTMLCanvasElement,
-  frames: DecodedExchangeFrame[],
-): ExchangeAnimPlayer {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let stopped = false;
-  const ctx = canvas.getContext('2d')!;
-  if (frames.length > 0) {
-    canvas.width  = frames[0].bitmap.width;
-    canvas.height = frames[0].bitmap.height;
-  }
-  function stop() {
-    stopped = true;
-    if (timer) { clearTimeout(timer); timer = null; }
-  }
-  function step(fi: number, loops: number, minLoops: number, onDone: () => void): void {
-    if (stopped || frames.length === 0) return;
-    const { bitmap, durationMs } = frames[fi];
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0);
-    const next = fi + 1;
-    if (next >= frames.length) {
-      const nextLoops = loops + 1;
-      if (nextLoops >= minLoops) {
-        timer = setTimeout(onDone, durationMs);
-      } else {
-        timer = setTimeout(() => step(0, nextLoops, minLoops, onDone), durationMs);
-      }
-    } else {
-      timer = setTimeout(() => step(next, loops, minLoops, onDone), durationMs);
+  function detach() {
+    if (onEnded) {
+      video.removeEventListener('ended', onEnded);
+      onEnded = null;
     }
   }
+
+  function stop() {
+    detach();
+    video.loop = false;
+    video.pause();
+  }
+
   return {
-    start(minLoops, onDone) { stop(); stopped = false; step(0, 0, minLoops, onDone); },
+    start(minLoops, onDone) {
+      detach();
+      video.currentTime = 0;
+      if (minLoops === Infinity) {
+        video.loop = true;
+        video.play().catch(() => {});
+        return;
+      }
+      video.loop = false;
+      let loops = 0;
+      onEnded = () => {
+        loops += 1;
+        if (loops >= minLoops) {
+          detach();
+          onDone();
+        } else {
+          video.currentTime = 0;
+          video.play().catch(() => {});
+        }
+      };
+      video.addEventListener('ended', onEnded);
+      video.play().catch(() => {});
+    },
     stop,
   };
 }
@@ -162,7 +126,7 @@ export default function ExchangeScreen() {
   const [currentExchangeAnim, setCurrentExchangeAnim] = useState<ExchangeAnimName>('interact_normal');
   const [exchangePlayersReady, setExchangePlayersReady] = useState(false);
   const [useExchangeImgFallback, setUseExchangeImgFallback] = useState(false);
-  const exchangeCanvasRefs = useRef<Partial<Record<ExchangeAnimName, HTMLCanvasElement>>>({});
+  const exchangeVideoRefs = useRef<Partial<Record<ExchangeAnimName, HTMLVideoElement>>>({});
   const exchangePlayersRef = useRef<Partial<Record<ExchangeAnimName, ExchangeAnimPlayer>>>({});
 
   // 交流探索フェーズ（鳴き声の送受信中）が終わったらマイクを確実にOFF。
@@ -185,48 +149,53 @@ export default function ExchangeScreen() {
     resolvedRef.current = false;
     setShowQR(false);
     setQrLoading(false);
-    setBarking(false);
-    setExchangeStarted(false);
     // 交流中アニメーションの後片付け（バイバイ・諦める・リトライ・アンマウント時）
     Object.values(exchangePlayersRef.current).forEach(p => p?.stop());
     exchangePlayersRef.current = {};
     setExchangePlayersReady(false);
-    setUseExchangeImgFallback(false);
+    // useExchangeImgFallback は端末の mp4 対応可否（能力フラグ）なのでリセットしない
     setCurrentExchangeAnim('interact_normal');
-    disposeExchangeFrames();
+    // 探索フェーズ(hand + 鳴きエフェクト)の後片付け
+    setBarking(false);
+    setExchangeStarted(false);
   }, []);
 
   // コンポーネントアンマウント時にクリーンアップ
   useEffect(() => () => cleanup(), [cleanup]);
 
-  // 探索フェーズの映像 hand.webp をプリロード（<img> なのでレンダリングでも読まれるが先読み）。
+  // 探索フェーズの映像 hand.mp4 をプリロード。
   useEffect(() => {
-    new Image().src = '/webp/hand.webp';
+    const v = document.createElement('video');
+    v.preload = 'auto';
+    v.src = '/movie/hand.mp4';
   }, []);
 
-  // session_active になったらフレームキャッシュからプレイヤーを生成。
-  // 重要: cleanup ではプレイヤー停止のみ行い、キャッシュ削除や ready のリセットはしない。
-  // （StrictMode の mount→cleanup→mount 二重実行でキャッシュが消えると再生不能になるため）
+  // mp4 非対応ブラウザは探索フェーズ・交流中とも <img>(WebP) フォールバックへ。
+  useEffect(() => {
+    if (!document.createElement('video').canPlayType('video/mp4')) {
+      setUseExchangeImgFallback(true);
+    }
+  }, []);
+
+  // session_active になったら video からプレイヤーを生成。
   useEffect(() => {
     if (step !== 'session_active') return;
-    // フォールバック描画時は canvas プレイヤー不要
+    // フォールバック描画時は video プレイヤー不要
     if (useExchangeImgFallback) return;
     const names: ExchangeAnimName[] = ['interact_normal', 'interact_happy'];
     let allReady = true;
     for (const name of names) {
-      const frames = exchangeFrameCache[name];
-      const canvas = exchangeCanvasRefs.current[name];
-      if (frames && canvas) {
-        exchangePlayersRef.current[name] = createExchangePlayer(canvas, frames);
+      const video = exchangeVideoRefs.current[name];
+      if (video) {
+        video.muted = true; // React の muted 非反映対策
+        if (!exchangePlayersRef.current[name]) {
+          exchangePlayersRef.current[name] = createExchangeVideoPlayer(video);
+        }
       } else {
         allReady = false;
       }
     }
-    // フレームが揃わなかった場合は img フォールバックへ切り替える
-    if (!allReady) {
-      setUseExchangeImgFallback(true);
-      return;
-    }
+    if (!allReady) return;
     setExchangePlayersReady(true);
     return () => {
       Object.values(exchangePlayersRef.current).forEach(p => p?.stop());
@@ -234,16 +203,35 @@ export default function ExchangeScreen() {
     };
   }, [step, useExchangeImgFallback]);
 
+  // 指定アニメのプレイヤーを起動。完了時に次のアニメへ遷移する。
+  const startExchangeAnim = useCallback((name: ExchangeAnimName) => {
+    const player = exchangePlayersRef.current[name];
+    if (!player) return;
+    player.start(EXCHANGE_ANIM_CONFIG[name].minLoops, () => {
+      setCurrentExchangeAnim(pickNextExchangeAnim(name));
+    });
+  }, []);
+
   // currentExchangeAnim が変わるたびに対応プレイヤーを起動（HomeScreen と同パターン）
   useEffect(() => {
     if (!exchangePlayersReady) return;
     const player = exchangePlayersRef.current[currentExchangeAnim];
     if (!player) return;
-    player.start(EXCHANGE_ANIM_CONFIG[currentExchangeAnim].minLoops, () => {
-      setCurrentExchangeAnim(pickNextExchangeAnim(currentExchangeAnim));
-    });
+    startExchangeAnim(currentExchangeAnim);
     return () => { player.stop(); };
-  }, [currentExchangeAnim, exchangePlayersReady]);
+  }, [currentExchangeAnim, exchangePlayersReady, startExchangeAnim]);
+
+  // タブを離れて戻ったときに setTimeout 連鎖が止まったままになるため、可視状態へ復帰したら
+  // 現在のアニメを再キックして再生を確実に復旧させる。
+  useEffect(() => {
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible' && exchangePlayersReady) {
+        startExchangeAnim(currentExchangeAnim);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [currentExchangeAnim, exchangePlayersReady, startExchangeAnim]);
 
   // QRスキャンから開いた場合（User B側）: URLに exchangeToken があれば自動処理
   useEffect(() => {
@@ -374,22 +362,11 @@ export default function ExchangeScreen() {
 
   async function loadSession(sessionId: string) {
     try {
-      // ImageDecoder 非対応ブラウザは <img> フォールバックで再生する
-      const canDecode = 'ImageDecoder' in window;
-      // セッション取得とアニメーションフレームのデコードを並列実行。
-      // デコードが失敗（or 非対応）の場合はフォールバックフラグを立てる。
-      const decodePromise = canDecode
-        ? (async () => {
-            for (const name of ['interact_normal', 'interact_happy'] as ExchangeAnimName[]) {
-              if (!exchangeFrameCache[name]) {
-                exchangeFrameCache[name] = await decodeExchangeFrames(name);
-              }
-            }
-            return true;
-          })().catch(() => false)
-        : Promise.resolve(false);
-      const [session, decoded] = await Promise.all([getSession(sessionId), decodePromise]);
-      setUseExchangeImgFallback(!decoded);
+      // mp4 非対応ブラウザは <img>(WebP) フォールバックで再生する
+      if (!document.createElement('video').canPlayType('video/mp4')) {
+        setUseExchangeImgFallback(true);
+      }
+      const session = await getSession(sessionId);
       setSessionData(session);
       setSessionId(sessionId);
       if (session.analysis_id) setAnalysisId(session.analysis_id);
@@ -498,31 +475,54 @@ export default function ExchangeScreen() {
   if (step === 'exchanging' || step === 'failed' || step === 'resolving' || step === 'waiting') {
     return (
       <div
-        className="flex flex-col bg-white relative"
-        style={{ height: 'calc(100svh - 3.5rem)' }}
+        className="flex flex-col bg-white fixed top-0 left-0 right-0 max-w-md mx-auto z-40"
+        style={{ height: 'calc(100dvh - 5rem)' }}
       >
-        {/* 映像: HomeScreen の flex-1 と同一構造。全状態 hand.webp ループに統一し、
-            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。 */}
-        <div className="flex-1 min-h-0 relative">
-          <div className="bark-pet">
+        {/* 縦位置をホーム画面と厳密一致させるための疑似表札（非表示・高さのみ確保）。
+            上部の戻りバー(z-50)はこの空きスロット上に重なって表示される。 */}
+        <div className="nameplate invisible">
+          <img src="/icons/plate.png" alt="" />
+          <span>ペットのお部屋</span>
+        </div>
+
+        {/* 映像: HomeScreen の flex-1 と同一構造（overflow-visible も一致）。全状態 hand ループに統一し、
+            鳴いている区間(barking)だけ CSS で「音波＋音符」を重ねる。
+            映像本体(.bark-img)は HomeScreen の animStyle と同一指定でサイズ/位置を厳密一致させ、
+            エフェクトは映像と同サイズの .bark-pet アンカーに分離する。
+            映像は白背景 mp4 を <video> で再生し、mp4 非対応時のみ WebP <img> にフォールバック。 */}
+        <div className="flex-1 min-h-0 relative overflow-visible">
+          {useExchangeImgFallback ? (
             <img src="/webp/hand.webp" alt="" className="bark-img" />
-            {barking && (
-              <>
-                <span className="bark-ripple" />
-                <span className="bark-ripple bark-ripple-delay" />
-                <span className="bark-note bark-note-1">♪</span>
-                <span className="bark-note bark-note-2">♫</span>
-                <span className="bark-note bark-note-3">♬</span>
-              </>
-            )}
-          </div>
-          {/* QRカード: 映像上に overlay（下部高さを変えない）*/}
+          ) : (
+            <video
+              ref={el => { if (el) el.muted = true; }}
+              src="/movie/hand.mp4"
+              muted
+              playsInline
+              autoPlay
+              loop
+              preload="auto"
+              className="bark-img"
+            />
+          )}
+          {barking && (
+            <div className="bark-pet">
+              <span className="bark-ripple" />
+              <span className="bark-ripple bark-ripple-delay" />
+              <span className="bark-note bark-note-1">♪</span>
+              <span className="bark-note bark-note-2">♫</span>
+              <span className="bark-note bark-note-3">♬</span>
+            </div>
+          )}
+          {/* QRカード: 映像エリア(flex-1)内に中央配置し、映像とちょうど同じ範囲に収める
+              （下寄せだと上部バーに被るため中央寄せ）。
+              映像(.bark-img z-index:1)・エフェクト(.bark-pet z-index:2)より前面に出す。 */}
           {showQR && (
-            <div className="absolute inset-0 flex items-end justify-center pb-4">
+            <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 10 }}>
               <div className="bg-white border border-gray-100 rounded-2xl p-4 flex flex-col items-center gap-3 w-[calc(100%-2rem)] shadow-lg">
                 {qrLoading || !tokenData ? (
                   <>
-                    <div className="text-4xl animate-pulse">📷</div>
+                    <img src="/icons/qr.png" className="w-10 h-10 object-contain animate-pulse" alt="" />
                     <p className="text-xs text-gray-500">QRコードを準備中...</p>
                   </>
                 ) : (
@@ -540,7 +540,7 @@ export default function ExchangeScreen() {
         </div>
 
         {/* HomeScreen の吹き出しエリアと同一クラス → 高さが一致 */}
-        <div className="relative mx-6 mb-3 flex-shrink-0">
+        <div className="relative mx-6 mb-1 flex-shrink-0">
           <img src="/icons/flame.png" className="w-full" alt="" />
           {/* キャッシュ化(デコード)完了前は準備中を表示し、開始後に波形へ切り替える */}
           {step === 'exchanging' && !showQR && !exchangeStarted && (
@@ -572,28 +572,44 @@ export default function ExchangeScreen() {
           )}
         </div>
 
-        {/* HomeScreen の入力エリアと同一クラス → 高さが一致 */}
-        <div className="px-4 pb-6 flex-shrink-0 flex items-center justify-center">
-          {(step === 'exchanging' || step === 'failed') ? (
-            showQR ? (
-              <button
-                onClick={handleBackToVoice}
-                className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
-              >
-                🎵 鳴き声に戻る
-              </button>
-            ) : (
-              <button
-                onClick={handleQR}
-                className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
-              >
-                📷 QRコードを使う
-              </button>
-            )
-          ) : (
-            // resolving/waiting はボタンを出さないが高さは維持する
-            <div className="h-12" />
-          )}
+        {/* HomeScreen の入力エリアと厳密に同じ高さにする（映像・セリフ枠の縦位置/サイズを一致させるため）。
+            home の「カウンター行 + フォーム行」を不可視スケルトンで再現して高さを確保し、
+            交流用ボタンを中央に重ねる。 */}
+        <div className="px-4 pb-2 flex-shrink-0">
+          {/* (a) home の active カウンター行と同一・不可視（高さ確保のみ） */}
+          <div className="flex justify-end px-2 mb-1">
+            <span className="text-xs invisible">0 / 0</span>
+          </div>
+
+          {/* (b) home のフォーム行と同一マークアップの不可視スケルトンで高さを確保し、実ボタンを中央に重ねる */}
+          <div className="relative">
+            <div className="flex items-center gap-3 invisible" aria-hidden="true">
+              <div className="flex-1 flex items-center bg-gray-100 rounded-full px-5 py-3 border border-gray-200 shadow-sm">
+                <input className="w-full border-0 outline-none text-base bg-transparent" tabIndex={-1} readOnly />
+              </div>
+              <div className="w-12 h-12" />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              {(step === 'exchanging' || step === 'failed') &&
+                (showQR ? (
+                  <button
+                    onClick={handleBackToVoice}
+                    className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+                  >
+                    🎵 鳴き声に戻る
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleQR}
+                    className="h-12 flex items-center gap-2 text-sm text-violet-600 border border-violet-300 rounded-xl px-4"
+                  >
+                    <img src="/icons/qr.png" className="w-5 h-5 object-contain" alt="" />
+                    QRコードを使う
+                  </button>
+                ))}
+              {/* resolving/waiting はボタン無し（高さはスケルトンが担保） */}
+            </div>
+          </div>
         </div>
 
         {/* 交流失敗ポップ: will-change:transform で GPU レイヤーに昇格し video の上に合成 */}
@@ -642,7 +658,7 @@ export default function ExchangeScreen() {
         {/* 交流中アニメーション（ロード完了後に遷移するためプレースホルダは不要）*/}
         <div className="relative w-full flex-shrink-0" style={{ height: '280px' }}>
           {useExchangeImgFallback
-            ? /* ImageDecoder 非対応 / デコード失敗: img で WebP をそのまま表示 */
+            ? /* mp4 非対応: img で WebP をそのまま表示 */
               (['interact_normal', 'interact_happy'] as ExchangeAnimName[]).map(name => (
                 <img
                   key={name}
@@ -659,11 +675,19 @@ export default function ExchangeScreen() {
                   }}
                 />
               ))
-            : /* ImageDecoder 対応: 事前デコード済みフレームを canvas に描画 */
+            : /* mp4 対応: 白背景 mp4 を <video> で再生（表示中のみ play） */
               (['interact_normal', 'interact_happy'] as ExchangeAnimName[]).map(name => (
-                <canvas
+                <video
                   key={name}
-                  ref={el => { if (el) exchangeCanvasRefs.current[name] = el; }}
+                  ref={el => {
+                    if (!el) return;
+                    exchangeVideoRefs.current[name] = el;
+                    el.muted = true;
+                  }}
+                  src={`/movie/${name}.mp4`}
+                  muted
+                  playsInline
+                  preload="auto"
                   className="absolute"
                   style={{
                     opacity: exchangePlayersReady && name === currentExchangeAnim ? 1 : 0,
