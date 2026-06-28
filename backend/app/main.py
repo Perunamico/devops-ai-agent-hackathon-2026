@@ -186,15 +186,28 @@ def submit_input(
     return agent.classify_and_store(uid, body)
 
 
+def _reclassify_recent_bg(db: FirestoreService, ai: VertexAIService, uid: str) -> None:
+    """直近の会話を毎ターン再構成して分類・保存する（応答をブロックしないバックグラウンド処理）。"""
+    try:
+        MemoryAgent(ai, db).reclassify_recent(uid)
+    except Exception as e:
+        logger.error("reclassify_recent background task failed for %s: %s", uid, e)
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(
     body: ChatRequest,
+    background_tasks: BackgroundTasks,
     uid: str = Depends(require_auth),
     db: FirestoreService = Depends(get_firestore),
     ai: VertexAIService = Depends(get_vertex_ai),
 ):
     agent = ConversationAgent(ai, db)
-    return agent.chat(uid, body.message)
+    response = agent.chat(uid, body.message)
+
+    # 発話の応答後に、記憶の分類・整理を非同期で実行する（発話と分類を分離）。
+    background_tasks.add_task(_reclassify_recent_bg, db, ai, uid)
+    return response
 
 
 @app.get("/memories/public", response_model=PublicMemoryResponse)
