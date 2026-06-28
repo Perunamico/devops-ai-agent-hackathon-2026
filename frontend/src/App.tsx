@@ -70,7 +70,7 @@ function TopNav() {
 
   if (screen !== 'home') {
     return (
-      <nav className="fixed top-0 left-0 right-0 bg-white flex items-center px-4 z-50 max-w-md mx-auto h-14" style={{ willChange: 'transform' }}>
+      <nav className="side-nav side-nav--sub" style={{ willChange: 'transform' }}>
         <button
           onClick={() => setScreen('home')}
           className="flex items-center gap-1.5 text-gray-900 text-sm font-medium"
@@ -83,7 +83,7 @@ function TopNav() {
   }
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white flex gap-2 px-3 py-2 z-50 max-w-md mx-auto h-20" style={{ willChange: 'transform' }}>
+    <nav className="side-nav side-nav--home" style={{ willChange: 'transform' }}>
       {NAV_ITEMS.map((item) => (
         <button
           key={item.screen}
@@ -108,12 +108,13 @@ function TopNav() {
   );
 }
 
-export default function App() {
+export default function App({ initialPet = null }: { initialPet?: PetResponse | null } = {}) {
   const hasQrToken = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).has('exchangeToken')
     : false;
   const [screen, setScreen] = useState<Screen>(hasQrToken ? 'exchange' : 'home');
-  const [pet, setPet] = useState<PetResponse | null>(null);
+  // 通常は null（命名フローから開始）。プレビュー等で初期ペットを渡すと active ホームから始まる。
+  const [pet, setPet] = useState<PetResponse | null>(initialPet);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
   const [exchangeSetupStep, setExchangeSetupStep] = useState<ExchangeSetupStep>(null);
@@ -164,9 +165,9 @@ export default function App() {
 
   return (
     <AppContext.Provider value={ctx}>
-      <div className="max-w-md mx-auto min-h-svh relative bg-white">
+      <div className="app-shell">
         <TopNav />
-        <div className={(screen === 'home' && homeLoading) ? '' : screen === 'home' ? 'pb-20' : 'pt-14'}>
+        <div className={(screen === 'home' && homeLoading) ? 'app-content' : screen === 'home' ? 'app-content nav-bottom' : 'app-content nav-top'}>
 
           {renderScreen()}
         </div>

@@ -312,7 +312,7 @@ export default function HomeScreen() {
   return (
     // ローディング中のみ全画面（h-svh）。命名・active は同じ高さにして
     // ペット・吹き出し・入力欄の表示位置を揃える（命名中はナビ分の余白を空ける）。
-    <div className={`flex flex-col relative bg-white ${isLoading ? 'h-svh' : 'h-[calc(100dvh-5rem)]'}`}>
+    <div className={`flex flex-col relative bg-white ${isLoading ? 'h-svh' : 'h-screen-minus-nav'}`}>
 
       {/* ローディング中: fixed で全画面を覆い TopNav も含めて完全に隠す。
           canvas は DOM に残したまま ref を確保し、バックグラウンドでデコードを続ける。 */}
