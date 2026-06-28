@@ -42,6 +42,8 @@ class PreferenceProfile(BaseModel):
     category_medium: str = ""
     category_small: str = ""
     preference: Literal["like", "interested", "dislike", "conditional"] = "interested"
+    # preference（好き/嫌いの向き）とは独立に「どのくらい好きか」の強さを表す。
+    intensity: Literal["low", "medium", "high"] = "medium"
     contents: list[ContentItem] = []
 
 
