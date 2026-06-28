@@ -261,7 +261,11 @@ export default function HomeScreen() {
 
   function toggleListening() {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!SR) return;
+    if (!SR) {
+      // iOS Safari など Web Speech API 非対応のブラウザではボタンは表示するが通知する
+      alert('この端末・ブラウザは音声入力に対応していません。');
+      return;
+    }
 
     if (listening) {
       recognitionRef.current?.abort();
@@ -284,11 +288,6 @@ export default function HomeScreen() {
     recog.start();
     setListening(true);
   }
-
-  const hasSpeechAPI = !!(
-    typeof window !== 'undefined' &&
-    (window.SpeechRecognition || window.webkitSpeechRecognition)
-  );
 
   const bubbleText =
     phase === 'naming'
@@ -406,7 +405,8 @@ export default function HomeScreen() {
               maxLength={phase === 'naming' ? NAME_MAX : undefined}
               onChange={(e) => setContent(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') {
+                // IME変換確定のEnterは送信しない（変換中は isComposing が true）
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   if (phase === 'naming') handleNameSubmit();
                   else handleSubmit();
@@ -416,7 +416,7 @@ export default function HomeScreen() {
               className="w-full border-0 outline-none text-base text-gray-700 placeholder-gray-400 bg-transparent"
             />
           </div>
-          {phase === 'active' && hasSpeechAPI && (
+          {phase === 'active' && (
             <button
               onClick={toggleListening}
               type="button"
