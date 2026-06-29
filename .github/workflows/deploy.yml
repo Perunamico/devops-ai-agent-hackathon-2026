@@ -228,13 +228,24 @@ jobs:
         run: |
           set -euo pipefail
           FIREBASE_CREDENTIALS="$RUNNER_TEMP/firebase-hosting-sa.json"
+          FIREBASE_LOG="$RUNNER_TEMP/firebase-live.log"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$FIREBASE_CREDENTIALS"
           npm install -g firebase-tools@15.22.3
+          set +e
           GOOGLE_APPLICATION_CREDENTIALS="$FIREBASE_CREDENTIALS" \
             firebase deploy \
               --project "$PROJECT_ID" \
               --only hosting \
-              --non-interactive
+              --non-interactive 2>&1 | tee "$FIREBASE_LOG"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$status" -ne 0 ]]; then
+            if grep -Eq "current active version" "$FIREBASE_LOG"; then
+              echo "Firebase live channel already points to the uploaded version; treating this as success."
+            else
+              exit "$status"
+            fi
+          fi
 
       - name: Check deployed backend health
         run: |
