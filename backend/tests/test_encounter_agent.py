@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.agents.encounter_agent import EncounterAgent
-from app.schemas.encounter import JoinExchangeRequest
 
 
 def make_agent():
@@ -18,57 +17,64 @@ def make_agent():
     }
     db = MagicMock()
     token_svc = MagicMock()
+    token_svc.generate_payload_raw.return_value = [17000, 18000, 19000]
+    token_svc.payload_to_token_key.return_value = "abc123"
     return EncounterAgent(ai, db, token_svc), db, token_svc
 
 
 def test_issue_token():
     agent, db, token_svc = make_agent()
-    expires = datetime.now(timezone.utc) + timedelta(seconds=30)
-    token_svc.generate_exchange_token.return_value = ("abc123", expires)
-    token_svc.encode_token_to_frequencies.return_value = [17000, 18000, 19000]
 
     result = agent.issue_token("user1")
 
-    assert result.token == "abc123"
-    assert result.sound_frequencies == [17000, 18000, 19000]
+    assert result.token_key == "abc123"
+    assert result.payload_raw == [17000, 18000, 19000]
     db.save_exchange_token.assert_called_once()
 
 
-def test_join_session_token_not_found():
+def test_resolve_token_not_found():
     agent, db, token_svc = make_agent()
     db.get_exchange_token.return_value = None
 
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc:
-        agent.join_session("user2", JoinExchangeRequest(token="bad", exchange_method="qr_fallback"))
-    assert exc.value.status_code == 404
+    result = agent.resolve_token("user2", [17000, 18000, 19000])
+
+    assert result.status == "not_found"
 
 
-def test_join_session_token_expired():
+def test_resolve_token_expired():
     agent, db, token_svc = make_agent()
     db.get_exchange_token.return_value = {
-        "token": "abc",
+        "token_key": "abc123",
         "issued_by": "user1",
         "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat(),
+        "used": False,
     }
 
-    from fastapi import HTTPException
-    with pytest.raises(HTTPException) as exc:
-        agent.join_session("user2", JoinExchangeRequest(token="abc", exchange_method="qr_fallback"))
-    assert exc.value.status_code == 410
+    result = agent.resolve_token("user2", [17000, 18000, 19000])
+
+    assert result.status == "expired"
 
 
-def test_both_approve_triggers_llm2():
+def test_resolve_token_reverse_match_creates_session():
     agent, db, token_svc = make_agent()
-    db.get_participants.return_value = [
-        {"user_id": "user1", "approved": True},
-        {"user_id": "user2", "approved": True},
-    ]
-    db.get_public_memory.return_value = {"safe_topic_tags": ["音楽"]}
-    db.get_blocked_topics.return_value = []
-    db.save_exchange_analysis.return_value = "analysis-id"
+    db.get_exchange_token.return_value = {
+        "token_key": "abc123",
+        "issued_by": "user1",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+        "used": False,
+    }
+    db.find_reverse_match.return_value = {
+        "id": "reverse-record",
+        "resolver_id": "user1",
+        "token_owner_id": "user2",
+        "payload_raw": [19000, 18000, 17000],
+    }
+    db.create_exchange_session.return_value = "session1"
+    db._list.return_value = []
 
-    result = agent.approve_exchange("session1", "user2", True)
+    result = agent.resolve_token("user2", [17000, 18000, 19000])
 
-    assert result["status"] == "confirmed"
-    db.save_exchange_analysis.assert_called_once()
+    assert result.status == "matched"
+    assert result.session_id == "session1"
+    db.create_exchange_session.assert_called_once()
+    db.update_match_record.assert_called_once_with("reverse-record", {"session_id": "session1"})
