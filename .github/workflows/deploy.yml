@@ -223,12 +223,18 @@ jobs:
           NODE
 
       - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: ${{ secrets.GCP_PROJECT_ID }}
-          channelId: live
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          FIREBASE_CREDENTIALS="$RUNNER_TEMP/firebase-hosting-sa.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$FIREBASE_CREDENTIALS"
+          npm install -g firebase-tools@15.22.3
+          GOOGLE_APPLICATION_CREDENTIALS="$FIREBASE_CREDENTIALS" \
+            firebase deploy \
+              --project "$PROJECT_ID" \
+              --only hosting \
+              --non-interactive
 
       - name: Check deployed backend health
         run: |
@@ -358,10 +364,38 @@ jobs:
           NODE
 
       - name: Deploy frontend to Firebase Preview Channel
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          projectId: ${{ secrets.GCP_PROJECT_ID }}
-          channelId: ${{ env.CHANNEL_ID }}
-          expires: 7d
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          FIREBASE_CREDENTIALS="$RUNNER_TEMP/firebase-hosting-sa.json"
+          FIREBASE_LOG="$RUNNER_TEMP/firebase-preview.log"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_JSON" > "$FIREBASE_CREDENTIALS"
+          npm install -g firebase-tools@15.22.3
+          deploy_preview() {
+            GOOGLE_APPLICATION_CREDENTIALS="$FIREBASE_CREDENTIALS" \
+              firebase hosting:channel:deploy "$CHANNEL_ID" \
+                --project "$PROJECT_ID" \
+                --expires 7d \
+                --non-interactive \
+                --debug 2>&1 | tee "$FIREBASE_LOG"
+            return "${PIPESTATUS[0]}"
+          }
+
+          set +e
+          deploy_preview
+          status=$?
+          if [[ "$status" -ne 0 ]] && grep -Eq "Channel .* already exists" "$FIREBASE_LOG"; then
+            echo "Firebase preview channel already exists after a retried create request; retrying deploy once."
+            deploy_preview
+            status=$?
+          fi
+          set -e
+
+          if [[ "$status" -ne 0 ]]; then
+            if grep -Eq "current active version" "$FIREBASE_LOG"; then
+              echo "Firebase preview channel already points to the uploaded version; treating this as success."
+            else
+              exit "$status"
+            fi
+          fi
