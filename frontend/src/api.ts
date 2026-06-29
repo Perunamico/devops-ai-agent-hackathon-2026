@@ -14,13 +14,16 @@ import type {
   ExchangeAnalysisResponse,
   ReportResponse,
 } from './types';
-import { getFirebaseIdToken } from './firebase';
+import { getFirebaseIdToken, isFirebaseConfigured } from './firebase';
 
 const BASE = '/api';
 const AUTH_HEADER = 'Bearer dev-token';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const idToken = await getFirebaseIdToken();
+  if (isFirebaseConfigured && !idToken) {
+    throw new Error('ログイン状態を確認できませんでした。もう一度ログインしてください。');
+  }
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
