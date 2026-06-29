@@ -205,7 +205,7 @@ CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT=ai-pet-api-runner@gen-lang-client-0099285268.i
 5. Firebase Hosting に deploy
 6. Cloud Run `/health` を確認
 
-Pull Request では Firebase Hosting Preview Channel `pr-<PR番号>` を 7 日間で作成し、backend は `ai-pet-api-pr-<PR番号>` に deploy します。
+Pull Request では Firebase Hosting Preview Channel `pr-<PR番号>-<run番号>` を 7 日間で作成し、backend は `ai-pet-api-pr-<PR番号>` に deploy します。channel id は再実行時の既存 channel 衝突を避けるため、run ごとに一意にします。
 
 ## 動作確認
 
