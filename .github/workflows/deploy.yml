@@ -401,6 +401,11 @@ jobs:
             fi
           fi
 
+          actual_url="$(grep -Eo "https://${FIREBASE_HOSTING_SITE}--${CHANNEL_ID}(-[a-z0-9]+)?\\.web\\.app" "$FIREBASE_LOG" | tail -n 1 || true)"
+          if [[ -n "$actual_url" ]]; then
+            echo "PREVIEW_URL=$actual_url" >> "$GITHUB_ENV"
+          fi
+
       - name: Publish preview summary
         uses: actions/github-script@v7
         with:
