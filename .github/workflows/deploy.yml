@@ -218,20 +218,16 @@ jobs:
             },
           };
 
-          fs.writeFileSync('firebase.ci.json', `${JSON.stringify(config, null, 2)}\n`);
+          fs.writeFileSync('firebase.json', `${JSON.stringify(config, null, 2)}\n`);
           NODE
 
       - name: Deploy to Firebase Hosting
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
-        run: |
-          npm install -g firebase-tools@15.22.1
-          firebase deploy \
-            --project "$PROJECT_ID" \
-            --config firebase.ci.json \
-            --only hosting \
-            --non-interactive
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ secrets.GCP_PROJECT_ID }}
+          channelId: live
 
       - name: Check deployed backend health
         run: |
@@ -357,17 +353,14 @@ jobs:
             },
           };
 
-          fs.writeFileSync('firebase.ci.json', `${JSON.stringify(config, null, 2)}\n`);
+          fs.writeFileSync('firebase.json', `${JSON.stringify(config, null, 2)}\n`);
           NODE
 
       - name: Deploy frontend to Firebase Preview Channel
-        env:
-          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
-          GOOGLE_CLOUD_PROJECT: ${{ secrets.GCP_PROJECT_ID }}
-        run: |
-          npm install -g firebase-tools@15.22.1
-          firebase hosting:channel:deploy "$CHANNEL_ID" \
-            --project "$PROJECT_ID" \
-            --config firebase.ci.json \
-            --expires 7d \
-            --non-interactive
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ${{ secrets.GCP_PROJECT_ID }}
+          channelId: ${{ env.CHANNEL_ID }}
+          expires: 7d
