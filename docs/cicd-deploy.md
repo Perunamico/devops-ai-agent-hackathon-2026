@@ -207,6 +207,13 @@ CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT=ai-pet-api-runner@gen-lang-client-0099285268.i
 
 Pull Request では Firebase Hosting Preview Channel `pr-<PR番号>-<run番号>` を 7 日間で作成し、backend は `ai-pet-api-pr-<PR番号>` に deploy します。channel id は再実行時の既存 channel 衝突を避けるため、run ごとに一意にします。
 
+PR preview deploy が成功すると、GitHub Actions の Step Summary と PR コメントに以下が表示されます。
+
+- Preview URL
+- Firebase channel
+- Cloud Run service
+- 有効期限
+
 ## 動作確認
 
 `dev` に push 後:
