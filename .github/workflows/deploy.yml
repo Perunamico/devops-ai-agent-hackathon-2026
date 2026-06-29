@@ -265,7 +265,7 @@ jobs:
 
           FIREBASE_HOSTING_SITE="${PREVIEW_FIREBASE_HOSTING_SITE:-${PROJECT_ID}-dev}"
           CLOUD_RUN_SERVICE="ai-pet-api-pr-${{ github.event.pull_request.number }}"
-          CHANNEL_ID="pr-${{ github.event.pull_request.number }}"
+          CHANNEL_ID="pr-${{ github.event.pull_request.number }}-${GITHUB_RUN_NUMBER}"
           APP_BASE_URL="https://${FIREBASE_HOSTING_SITE}--${CHANNEL_ID}.web.app"
           RUNTIME_SERVICE_ACCOUNT="${CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT:-ai-pet-api-runner@${PROJECT_ID}.iam.gserviceaccount.com}"
           IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPOSITORY}/${IMAGE_NAME}:pr-${{ github.event.pull_request.number }}-${GITHUB_SHA}"
