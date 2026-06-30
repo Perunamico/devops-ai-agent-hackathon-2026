@@ -280,22 +280,8 @@ class FirestoreService:
                 else:
                     add_item(secret, seen_secret, item)
 
-        for key, detail in (
-            ("interests", "興味"),
-            ("values", "価値観"),
-            ("recent_topics", "最近の話題"),
-        ):
-            for index, value in enumerate(private_memory.get(key) or []):
-                if value in seen_allowed:
-                    continue
-                add_item(secret, seen_secret, {
-                    "id": f"private-{key}-{index}",
-                    "summary": value,
-                    "detail": detail,
-                    "source": "private",
-                    "created_at": private_memory.get("updated_at", ""),
-                    "category": detail,
-                })
+        # interests / values / recent_topics はトピックのタグであり、
+        # エピソード（profiles）と重複する。カードとしては並べない（保存は維持）。
 
         for key, detail in (
             ("conversation_style_notes", "会話スタイル"),

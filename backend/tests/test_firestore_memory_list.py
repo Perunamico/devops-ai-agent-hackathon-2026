@@ -57,9 +57,10 @@ def test_get_memory_list_groups_review_allowed_and_secret():
         "カフェ巡りが好き",
         "小さなライブハウスが好き",
     ]
+    # interests（夜に作業するのが好き）はタグなのでカード化しない。
+    # 秘匿カードは共有しないプロフィール内容・会話スタイル・ブロック情報のみ。
     assert [item["summary"] for item in memories["secret"]] == [
         "家族の予定に合わせて行く",
-        "夜に作業するのが好き",
         "落ち着いた会話を好む",
         "電話番号",
     ]
