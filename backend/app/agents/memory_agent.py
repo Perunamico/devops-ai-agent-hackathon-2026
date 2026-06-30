@@ -72,6 +72,7 @@ _CLASSIFY_PROMPT = """\
 
 各エピソードの contents には、**そのエピソードの1行要約を1件だけ**入れる（reason / emotion などに細かく分割しない）。
 - label は "example" を使い、content に「ユーザーが話した内容の事実ベースの1行要約」を書く。
+- content は **80字以内**を目安に簡潔に。文末は「。」で終える。
 - 「〜を好む人」「〜と感じている」のような性格・内面の言い換えはしない。
 - shareability（共有してよい範囲）と confidence を必ず付ける。
 
@@ -327,6 +328,26 @@ _VALID_SHAREABILITY = {"ok", "summary_only", "private", "unknown"}
 _VALID_CONFIDENCE = {"low", "medium", "high"}
 _VALID_PREFERENCE = {"like", "interested", "dislike", "conditional"}
 _VALID_INTENSITY = {"low", "medium", "high"}
+_SUMMARY_LIMIT = 100
+
+
+def _trim_to_sentence(text: str, limit: int = _SUMMARY_LIMIT) -> str:
+    """要約を limit 文字以内に、文末（。）で自然に収める。
+
+    limit 以内に句点があればそこまで採用する。limit 以内に句点が無ければ、
+    文を途中で切らずに最初の1文をそのまま残す（多少 limit を超えることがある）。
+    「…」のような切り詰め記号は付けない。
+    """
+    text = (text or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text.rfind("。", 0, limit)
+    if cut != -1:
+        return text[: cut + 1]
+    first = text.find("。")
+    if first != -1:
+        return text[: first + 1]
+    return text
 
 
 def _render_window(messages: list[dict]) -> str:
@@ -379,7 +400,7 @@ def _normalize_memory_result(raw: dict) -> dict:
         "values": raw.get("values") or [],
         "recent_topics": raw.get("recent_topics") or [],
         "conversation_style_notes": raw.get("conversation_style_notes") or "",
-        "safe_summary": raw.get("safe_summary") or "",
+        "safe_summary": _trim_to_sentence(raw.get("safe_summary") or ""),
         "blocked_reason": raw.get("blocked_reason") or "",
         "review_reason": raw.get("review_reason") or "",
         "profiles": _normalize_profiles(raw.get("profiles")),
@@ -407,7 +428,7 @@ def _normalize_profiles(raw_profiles) -> list[dict]:
             conf = c.get("confidence")
             contents.append({
                 "label": label,
-                "content": str(content),
+                "content": _trim_to_sentence(str(content)),
                 "shareability": share if share in _VALID_SHAREABILITY else "unknown",
                 "confidence": conf if conf in _VALID_CONFIDENCE else "low",
             })
