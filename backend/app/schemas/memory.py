@@ -141,6 +141,8 @@ class MemoryClassifyResult(BaseModel):
     safe_summary: str = ""
     blocked_reason: str = ""
     review_reason: str = ""
+    # review_required の要約は profiles を通らないため、カードのカテゴリーを別途持たせる。
+    review_category_large: str = ""
     profiles: list[PreferenceProfile] = []
 
 

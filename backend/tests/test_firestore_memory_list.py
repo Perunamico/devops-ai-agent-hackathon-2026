@@ -51,12 +51,16 @@ def test_get_memory_list_groups_review_allowed_and_secret():
         "健康の話題",
         "特定の健康事情に左右される",
     ]
-    # 公開カードは safe_summaries（エピソード要約）と共有可のプロフィール内容だけ。
-    # shareable_interests（映画鑑賞）などはマッチング用に保存はするがカード表示しない。
+    # カード自体は従来どおり（safe_summaries 由来＋共有可のプロフィール内容）。
+    # shareable_interests（映画鑑賞）はマッチング用に保存はするがカード表示しない。
     assert [item["summary"] for item in memories["allowed"]] == [
         "カフェ巡りが好き",
         "小さなライブハウスが好き",
     ]
+    # チップ（category）は中身のカテゴリーのみ。「公開要約」固定は出さない。
+    # 対応するプロフィールが無い safe_summary はカテゴリー空（チップ非表示）。
+    assert memories["allowed"][0]["category"] == ""
+    assert memories["allowed"][1]["category"] == "音楽"
     # interests（夜に作業するのが好き）はタグなのでカード化しない。
     # 秘匿カードは共有しないプロフィール内容・会話スタイル・ブロック情報のみ。
     assert [item["summary"] for item in memories["secret"]] == [
@@ -100,6 +104,25 @@ def test_approve_unknown_profile_content_moves_to_allowed():
     after = db.get_memory_list(user_id)
     assert "特定の健康事情に左右される" not in [i["summary"] for i in after["review"]]
     assert "特定の健康事情に左右される" in [i["summary"] for i in after["allowed"]]
+
+
+def test_review_approval_card_uses_agent_category():
+    # review_required を承認すると公開カードになる。チップは profiles を通らないので
+    # エージェントが付けた category_large（review_required 用）を保存・表示する。
+    db = FirestoreService(Settings(firestore_enabled=False))
+    user_id = "user-r"
+    db.add_review_required(user_id, {
+        "candidate_summary": "健康の話題",
+        "reason": "確認",
+        "category_large": "健康・ウェルネス",
+    })
+    item_id = db.get_review_items(user_id)[0]["id"]
+
+    db.resolve_review_item(user_id, item_id, "approve")
+
+    allowed = db.get_memory_list(user_id)["allowed"]
+    card = next(i for i in allowed if i["summary"] == "健康の話題")
+    assert card["category"] == "健康・ウェルネス"
 
 
 def test_reject_unknown_profile_content_moves_to_secret():

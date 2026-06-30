@@ -225,24 +225,36 @@ class FirestoreService:
             seen.add(summary)
             items.append({**item, "summary": summary})
 
-        public_memory = self.get_public_memory(user_id) or {}
-        # 1エピソード=1カードに集約するため、表示する公開カードは safe_summaries（エピソード要約）だけ。
-        # interests / hooks / tags はマッチング用に保存はするが、カードとしては並べない。
-        for key, detail in (
-            ("safe_summaries", "公開要約"),
-        ):
-            for index, value in enumerate(public_memory.get(key) or []):
-                add_item(allowed, seen_allowed, {
-                    "id": f"public-{key}-{index}",
-                    "summary": value,
-                    "detail": detail,
-                    "source": "public",
-                    "created_at": public_memory.get("updated_at", ""),
-                    "category": detail,
-                })
-
         private_memory = self.get_private_memory(user_id) or {}
-        for profile_index, profile in enumerate(private_memory.get("profiles") or []):
+        public_memory = self.get_public_memory(user_id) or {}
+        profiles = private_memory.get("profiles") or []
+
+        # 公開カードのチップに出す「中身のカテゴリー(category_large)」の対応表。
+        # いずれもメモリ保存エージェントが決めたカテゴリーを使う:
+        #   - profiles 由来の要約 → そのプロフィールの category_large
+        #   - review 承認など profiles を通らない要約 → 保存済み summary_categories
+        summary_category: dict[str, str] = dict(public_memory.get("summary_categories") or {})
+        for profile in profiles:
+            large = profile.get("category_large") or ""
+            if not large:
+                continue
+            for content in profile.get("contents") or []:
+                text = str(content.get("content") or "").strip()
+                if text:
+                    summary_category[text] = large
+
+        for index, value in enumerate(public_memory.get("safe_summaries") or []):
+            add_item(allowed, seen_allowed, {
+                "id": f"public-safe_summaries-{index}",
+                "summary": value,
+                "detail": "公開要約",
+                "source": "public",
+                "created_at": public_memory.get("updated_at", ""),
+                # チップは中身のカテゴリーのみ。対応が無ければ空にしてチップを出さない。
+                "category": summary_category.get(str(value).strip(), ""),
+            })
+
+        for profile_index, profile in enumerate(profiles):
             topic = profile.get("topic") or "未分類の記憶"
             category = " / ".join(
                 part for part in (
@@ -280,6 +292,7 @@ class FirestoreService:
                 else:
                     add_item(secret, seen_secret, item)
 
+        # interests / hooks / tags はマッチング用に保存はするが、カードとしては並べない。
         # interests / values / recent_topics はトピックのタグであり、
         # エピソード（profiles）と重複する。カードとしては並べない（保存は維持）。
 
@@ -325,11 +338,15 @@ class FirestoreService:
         if not item:
             return
         if action == "approve":
+            candidate = item.get("candidate_summary", "")
+            category = item.get("category_large", "")
             self.upsert_public_memory(user_id, {
-                "safe_summaries": [item.get("candidate_summary", "")],
+                "safe_summaries": [candidate],
                 "safe_topic_tags": [],
                 "public_conversation_hooks": [],
                 "shareable_interests": [],
+                # カードのチップに出すカテゴリー（エージェントが決めたもの）を保存。
+                "summary_categories": {candidate: category} if candidate else {},
             })
             self._set(f"users/{user_id}/review_required", item_id, {**item, "status": "approved"})
         elif action == "reject":
@@ -502,6 +519,10 @@ def _merge_memory(existing: dict, new: dict) -> dict:
         if isinstance(value, list) and isinstance(result.get(key), list):
             combined = result[key] + [v for v in value if v not in result[key]]
             result[key] = combined[:50]  # cap list size
+        elif isinstance(value, dict) and isinstance(result.get(key), dict):
+            merged = dict(result[key])
+            merged.update(value)
+            result[key] = merged
         else:
             result[key] = value
     return result

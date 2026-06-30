@@ -110,6 +110,7 @@ confidence は low | medium | high。推測が強いほど low にする。
   "safe_summary": "review_requiredのときだけ、何の話題かを個人情報抜きで1行。それ以外は空文字",
   "blocked_reason": "blockedの場合のみ理由",
   "review_reason": "review_requiredの場合のみ理由",
+  "review_category_large": "review_requiredのとき、その話題のカテゴリーを上の100個から必ず1つ選ぶ（カードのカテゴリー表示に使う）",
   "profiles": [
     {{
       "topic": "好きな対象の名前",
@@ -237,6 +238,8 @@ class MemoryAgent:
                 self._db.add_review_required(user_id, {
                     "candidate_summary": candidate,
                     "reason": result.review_reason,
+                    # 承認時にカードのカテゴリーとして使う（エージェントが決めたカテゴリー）。
+                    "category_large": result.review_category_large,
                 })
 
         # blocked 以外なら、構造化した嗜好プロフィールを永続化する
@@ -403,6 +406,7 @@ def _normalize_memory_result(raw: dict) -> dict:
         "safe_summary": _trim_to_sentence(raw.get("safe_summary") or ""),
         "blocked_reason": raw.get("blocked_reason") or "",
         "review_reason": raw.get("review_reason") or "",
+        "review_category_large": raw.get("review_category_large") or "",
         "profiles": _normalize_profiles(raw.get("profiles")),
     }
 
