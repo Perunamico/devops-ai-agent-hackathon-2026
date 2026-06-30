@@ -2,6 +2,8 @@
 
 このプロジェクトでは、バックエンドだけを Docker 化して Cloud Run に配置し、フロントエンドは Firebase Hosting から静的配信します。
 
+`main` / `dev` push 時の自動デプロイは [CI/CD Deploy](./cicd-deploy.md) を参照してください。
+
 ## 前提
 
 - Google Cloud プロジェクトと Firebase プロジェクトが同じプロジェクト ID で作成済み
