@@ -1,17 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { User } from 'firebase/auth';
 import { useApp } from '../App';
 import { sendChat, getReviewItems, createPet } from '../api';
-import {
-  createAccountWithEmail,
-  isCurrentUserEmailVerified,
-  isFirebaseConfigured,
-  onAuthStateChanged,
-  sendPasswordReset,
-  sendVerificationToCurrentUser,
-  signInWithEmail,
-  signOutUser,
-} from '../firebase';
 
 const NAME_MAX = 12;
 
@@ -37,23 +26,6 @@ const AVAILABLE_ANIMS: AnimName[] = [
 ];
 
 const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
-
-type AuthMode = 'signin' | 'signup';
-
-function messageForAuthError(err: unknown): string {
-  const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
-  if (code.includes('auth/email-already-in-use')) return 'このメールアドレスはすでに登録されています。';
-  if (code.includes('auth/invalid-email')) return 'メールアドレスの形式を確認してください。';
-  if (code.includes('auth/invalid-credential') || code.includes('auth/wrong-password') || code.includes('auth/user-not-found')) {
-    return 'メールアドレスまたはパスワードが違います。';
-  }
-  if (code.includes('auth/weak-password')) return 'パスワードは8文字以上にしてください。';
-  if (code.includes('auth/operation-not-allowed')) return 'メール/パスワード認証がFirebaseで有効になっていません。';
-  if (code.includes('auth/unauthorized-domain')) return 'このURLがFirebase Authの承認済みドメインに登録されていません。';
-  if (code.includes('auth/too-many-requests')) return '試行回数が多すぎます。少し時間を置いてください。';
-  if (code.includes('auth/network-request-failed')) return 'ネットワーク接続を確認してください。';
-  return '認証に失敗しました。もう一度お試しください。';
-}
 
 function pickInterlude(): AnimName {
   return INTERLUDE_ANIMS[Math.floor(Math.random() * INTERLUDE_ANIMS.length)];
@@ -160,14 +132,6 @@ export default function HomeScreen() {
   const [petBubble, setPetBubble] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const [authUser, setAuthUser] = useState<User | null>(null);
-  const [authMode, setAuthMode] = useState<AuthMode>('signin');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authLoading, setAuthLoading] = useState(isFirebaseConfigured);
-  const [authSubmitting, setAuthSubmitting] = useState(false);
-  const [authNotice, setAuthNotice] = useState('');
-  const [authError, setAuthError] = useState('');
 
   // pet が未作成なら命名モード。名付け完了後に 'active' へ移行する。
   const [phase, setPhase] = useState<'naming' | 'active'>(pet ? 'active' : 'naming');
@@ -186,27 +150,11 @@ export default function HomeScreen() {
   const coreReady = true;
   const isLoading = false;
 
-  const normalizedEmail = email.trim();
-  const requiresAuth = isFirebaseConfigured && phase === 'naming';
-  const isVerifiedUser = Boolean(authUser?.emailVerified);
-  const canCreatePet = !requiresAuth || Boolean(authUser);
-
   // mp4 非対応ブラウザは <img>(WebP) フォールバックへ切り替える。
   useEffect(() => {
     if (!document.createElement('video').canPlayType('video/mp4')) {
       setUseImgFallback(true);
     }
-  }, []);
-
-  useEffect(() => {
-    if (!isFirebaseConfigured) {
-      setAuthLoading(false);
-      return;
-    }
-    return onAuthStateChanged((user) => {
-      setAuthUser(user);
-      setAuthLoading(false);
-    });
   }, []);
 
   // ローディング状態を App（TopNav）に伝える
@@ -293,16 +241,6 @@ export default function HomeScreen() {
     e?.preventDefault();
     const name = content.trim().slice(0, NAME_MAX);
     if (!name || submitting) return;
-    if (requiresAuth) {
-      if (!authUser) {
-        setAuthError('メールアドレスでログインしてから名前を決めてください。');
-        return;
-      }
-      if (!(await isCurrentUserEmailVerified())) {
-        setAuthError('確認メールのリンクを開いてから、もう一度お試しください。');
-        return;
-      }
-    }
     setSubmitting(true);
     try {
       const created = await createPet({
@@ -318,89 +256,6 @@ export default function HomeScreen() {
       setPetBubble('うーん、うまくいかなかった…もう一度試してみて！');
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleAuthSubmit(e?: React.FormEvent) {
-    e?.preventDefault();
-    setAuthError('');
-    setAuthNotice('');
-    if (!normalizedEmail) {
-      setAuthError('メールアドレスを入力してください。');
-      return;
-    }
-    if (password.length < 8) {
-      setAuthError('パスワードは8文字以上で入力してください。');
-      return;
-    }
-
-    setAuthSubmitting(true);
-    try {
-      if (authMode === 'signin') {
-        await signInWithEmail(normalizedEmail, password);
-        const verified = await isCurrentUserEmailVerified();
-        if (!verified) {
-          setAuthError('確認メールのリンクを開いてからログインしてください。');
-          return;
-        }
-        setPassword('');
-        setAuthNotice('ログインしました。名前を入力してください。');
-      } else {
-        await createAccountWithEmail(normalizedEmail, password);
-        setPassword('');
-        setAuthMode('signin');
-        setAuthNotice('確認メールを送信しました。リンクを開いてからログインしてください。');
-      }
-    } catch (err) {
-      setAuthError(messageForAuthError(err));
-    } finally {
-      setAuthSubmitting(false);
-    }
-  }
-
-  async function handleResetPassword() {
-    setAuthError('');
-    setAuthNotice('');
-    if (!normalizedEmail) {
-      setAuthError('パスワード再設定にはメールアドレスを入力してください。');
-      return;
-    }
-    setAuthSubmitting(true);
-    try {
-      await sendPasswordReset(normalizedEmail);
-      setAuthNotice('パスワード再設定メールを送信しました。');
-    } catch (err) {
-      setAuthError(messageForAuthError(err));
-    } finally {
-      setAuthSubmitting(false);
-    }
-  }
-
-  async function handleResendVerification() {
-    setAuthError('');
-    setAuthNotice('');
-    setAuthSubmitting(true);
-    try {
-      await sendVerificationToCurrentUser();
-      setAuthNotice('確認メールを再送しました。');
-    } catch {
-      setAuthError('確認メールを送信できませんでした。ログインし直してください。');
-    } finally {
-      setAuthSubmitting(false);
-    }
-  }
-
-  async function handleSignOut() {
-    setAuthError('');
-    setAuthNotice('');
-    setAuthSubmitting(true);
-    try {
-      await signOutUser();
-      setPassword('');
-    } catch {
-      setAuthError('ログアウトに失敗しました。もう一度お試しください。');
-    } finally {
-      setAuthSubmitting(false);
     }
   }
 
@@ -524,96 +379,6 @@ export default function HomeScreen() {
       {/* 入力エリア: 最下部（ローディング完了後のみ表示） */}
       {!isLoading && (
       <div className="px-4 pb-2 flex-shrink-0">
-        {phase === 'naming' && isFirebaseConfigured && (
-          <form onSubmit={handleAuthSubmit} className="mb-3 rounded-3xl border border-gray-200 bg-white p-3 shadow-sm space-y-3">
-            {authLoading ? (
-              <p className="text-sm text-gray-400 text-center py-2">ログイン状態を確認中...</p>
-            ) : authUser ? (
-              <div className="space-y-2">
-                <div className="rounded-2xl bg-gray-50 px-3 py-2 text-center">
-                  <p className="text-[10px] text-gray-400">ログイン中</p>
-                  <p className="text-xs font-semibold text-gray-800 break-all">{authUser.email}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={handleResendVerification}
-                    disabled={authSubmitting || isVerifiedUser}
-                    className="rounded-2xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 disabled:opacity-50"
-                  >
-                    確認メール再送
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSignOut}
-                    disabled={authSubmitting}
-                    className="rounded-2xl bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-600 disabled:opacity-50"
-                  >
-                    別アカウント
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 rounded-2xl bg-gray-100 p-1">
-                  <button
-                    type="button"
-                    onClick={() => { setAuthMode('signin'); setAuthError(''); setAuthNotice(''); }}
-                    className={`rounded-xl py-2 text-xs font-semibold transition-colors ${authMode === 'signin' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500'}`}
-                  >
-                    ログイン
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAuthMode('signup'); setAuthError(''); setAuthNotice(''); }}
-                    className={`rounded-xl py-2 text-xs font-semibold transition-colors ${authMode === 'signup' ? 'bg-white text-violet-700 shadow-sm' : 'text-gray-500'}`}
-                  >
-                    新規登録
-                  </button>
-                </div>
-                <div className="space-y-2">
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="email"
-                    inputMode="email"
-                    placeholder="メールアドレス"
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-violet-400 focus:bg-white"
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    autoComplete={authMode === 'signin' ? 'current-password' : 'new-password'}
-                    minLength={8}
-                    placeholder="パスワード"
-                    className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800 outline-none focus:border-violet-400 focus:bg-white"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={authSubmitting}
-                  className="w-full rounded-2xl bg-violet-600 py-3 text-sm font-bold text-white disabled:opacity-50"
-                >
-                  {authSubmitting ? '処理中...' : authMode === 'signin' ? 'ログイン' : '確認メールを送る'}
-                </button>
-                {authMode === 'signin' && (
-                  <button
-                    type="button"
-                    onClick={handleResetPassword}
-                    disabled={authSubmitting}
-                    className="w-full text-center text-xs font-semibold text-violet-700 disabled:opacity-50"
-                  >
-                    パスワードを忘れた場合
-                  </button>
-                )}
-              </>
-            )}
-            {authError && <p className="text-xs text-red-500 text-center bg-red-50 rounded-xl px-3 py-2">{authError}</p>}
-            {authNotice && <p className="text-xs text-violet-700 text-center bg-violet-50 rounded-xl px-3 py-2">{authNotice}</p>}
-          </form>
-        )}
         {/* 文字数カウンター: 命名時のみ表示。active でも同じ高さの行を確保して
             ペット・吹き出しの縦位置をホームと揃える（active は invisible で非表示）。 */}
         <div className="flex justify-end px-2 mb-1">
@@ -671,7 +436,7 @@ export default function HomeScreen() {
           )}
           <button
             type="submit"
-            disabled={!content.trim() || submitting || (phase === 'naming' && !canCreatePet)}
+            disabled={!content.trim() || submitting}
             className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 bg-violet-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             aria-label={phase === 'naming' ? '名前を決める' : '送信'}
           >
