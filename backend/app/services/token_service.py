@@ -40,8 +40,6 @@ class TokenService:
         self._ensure_firebase()
         from firebase_admin import auth
         decoded = auth.verify_id_token(id_token)
-        if decoded.get("email") and not decoded.get("email_verified", False):
-            raise ValueError("Email is not verified")
         return decoded["uid"]
 
     def generate_payload_raw(self) -> list[int]:
