@@ -226,11 +226,10 @@ class FirestoreService:
             items.append({**item, "summary": summary})
 
         public_memory = self.get_public_memory(user_id) or {}
+        # 1エピソード=1カードに集約するため、表示する公開カードは safe_summaries（エピソード要約）だけ。
+        # interests / hooks / tags はマッチング用に保存はするが、カードとしては並べない。
         for key, detail in (
             ("safe_summaries", "公開要約"),
-            ("shareable_interests", "共有できる興味"),
-            ("public_conversation_hooks", "会話のきっかけ"),
-            ("safe_topic_tags", "共有できるタグ"),
         ):
             for index, value in enumerate(public_memory.get(key) or []):
                 add_item(allowed, seen_allowed, {

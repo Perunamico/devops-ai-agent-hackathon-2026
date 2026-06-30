@@ -51,9 +51,10 @@ def test_get_memory_list_groups_review_allowed_and_secret():
         "健康の話題",
         "特定の健康事情に左右される",
     ]
+    # 公開カードは safe_summaries（エピソード要約）と共有可のプロフィール内容だけ。
+    # shareable_interests（映画鑑賞）などはマッチング用に保存はするがカード表示しない。
     assert [item["summary"] for item in memories["allowed"]] == [
         "カフェ巡りが好き",
-        "映画鑑賞",
         "小さなライブハウスが好き",
     ]
     assert [item["summary"] for item in memories["secret"]] == [
