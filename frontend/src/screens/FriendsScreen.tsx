@@ -1,6 +1,13 @@
-// ともだち画面。Claude Design の「ともだち.dc.html」を CSS で忠実に再現したもの。
-// デザインの PNG フレーム（frame-header2 / frame-stats2 / frame-card2 / frame-button2）は
-// バイナリ依存を避けるため、角丸カード＋ソフトシャドウ＋ブルー系アクセントの CSS で再現している。
+import type { CSSProperties } from 'react';
+
+// ともだち画面。デザインの PNG フレーム素材（frontend/public/icons/*）と stop.png を使って
+// モックアップに合わせて装飾している。
+//   ヘッダー  : friends_frame.png（鎖付き看板）
+//   統計バー  : count.png（点線区切り＋四隅キラキラ）
+//   カード枠  : big_frame.png（四隅キラキラ）
+//   ボタン    : episode_button.png（中央キラキラ）
+//   アバター  : /png/stop.png（ロボット）
+// 各フレームは backgroundSize:'100% 100%' でストレッチし、コンテンツを padding で内側に収める。
 // data はデザインのプレースホルダをそのまま移植。将来 API へ差し替えやすいよう FRIENDS 定数に分離。
 
 interface Friend {
@@ -36,24 +43,18 @@ const STATS: { label: string; value: string; unit: string }[] = [
   { label: '最近の交流', value: '3', unit: '時間前' },
 ];
 
-const CARD_SHADOW = '0 8px 24px rgba(70, 112, 230, 0.10)';
+// PNG フレームを全面ストレッチで背景に敷くための共通スタイル。
+const frameBg = (src: string): CSSProperties => ({
+  backgroundImage: `url(${src})`,
+  backgroundSize: '100% 100%',
+  backgroundRepeat: 'no-repeat',
+});
 
 function ClockIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ flex: '0 0 auto' }} aria-hidden>
       <circle cx="12" cy="12" r="9" stroke="#93a4c4" strokeWidth="2" />
       <path d="M12 7.5V12l3 2" stroke="#93a4c4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ChatIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4 3v-3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"
-        stroke="#5b84f0" strokeWidth="2" strokeLinejoin="round"
-      />
     </svg>
   );
 }
@@ -68,39 +69,33 @@ export default function FriendsScreen() {
         fontFamily: "'M PLUS Rounded 1c','Hiragino Maru Gothic ProN',system-ui,sans-serif",
       }}
     >
-      <div style={{ padding: '8px 16px 36px', display: 'flex', flexDirection: 'column', gap: 13 }}>
+      <div style={{ padding: '4px 16px 28px', display: 'flex', flexDirection: 'column', gap: 2 }}>
 
-        {/* ヘッダー */}
+        {/* ヘッダー（friends_frame.png の看板） */}
         <div
           style={{
-            background: '#fff', borderRadius: 20, boxShadow: CARD_SHADOW,
-            padding: '16px 22px', display: 'flex', alignItems: 'center', gap: 12,
+            ...frameBg('/icons/friends_frame.png'),
+            aspectRatio: '2508 / 627',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            // 鎖が上に出るぶん、看板の中心はやや下。padding で文字を看板部分へ寄せる。
+            padding: '9% 8% 2%',
           }}
         >
-          <span style={{ fontSize: 26 }} aria-hidden>🐾</span>
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#4670e6', lineHeight: 1.1 }}>ともだち</div>
-            <div style={{ fontSize: 11.5, fontWeight: 500, color: '#93a4c4', marginTop: 3 }}>
-              なかよくなったペットたち
-            </div>
-          </div>
+          <span style={{ fontSize: 22, fontWeight: 800, color: '#4670e6', letterSpacing: 2 }}>
+            ともだち
+          </span>
         </div>
 
-        {/* 統計 */}
+        {/* 統計（count.png のフレーム。点線区切りはフレーム側） */}
         <div
           style={{
-            background: '#fff', borderRadius: 20, boxShadow: CARD_SHADOW,
-            padding: '14px 8px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'center',
+            ...frameBg('/icons/count.png'),
+            aspectRatio: '2508 / 627',
+            padding: '4% 5%', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', alignItems: 'center',
           }}
         >
-          {STATS.map((s, i) => (
-            <div
-              key={s.label}
-              style={{
-                textAlign: 'center',
-                borderLeft: i === 0 ? 'none' : '1px solid #eaf0fe',
-              }}
-            >
+          {STATS.map((s) => (
+            <div key={s.label} style={{ textAlign: 'center' }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#7596f3', marginBottom: 3 }}>{s.label}</div>
               <div style={{ color: '#7596f3', lineHeight: 1 }}>
                 <span style={{ fontSize: 25, fontWeight: 800, color: '#4670e6' }}>{s.value}</span>
@@ -115,8 +110,15 @@ export default function FriendsScreen() {
           <div
             key={friend.id}
             style={{
-              background: '#fff', borderRadius: 22, boxShadow: CARD_SHADOW,
-              padding: '22px 26px 24px', display: 'flex', flexDirection: 'column', gap: 12,
+              // big_frame.png は外周に余白があり全面ストレッチだと枠線が内側へ寄って中身がはみ出す。
+              // 四隅を固定したまま辺だけ伸縮する border-image で枠を当てる（fill で内側は白）。
+              // 枠の外側余白が大きいとカード間が空くので、border 幅を薄めにして詰める。
+              borderStyle: 'solid',
+              borderWidth: '24px 16px',
+              borderImageSource: 'url(/icons/big_frame.png)',
+              borderImageSlice: '208 142 fill',
+              borderImageRepeat: 'stretch',
+              padding: '8px 12px 10px', display: 'flex', flexDirection: 'column', gap: 12,
             }}
           >
             <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
@@ -124,11 +126,15 @@ export default function FriendsScreen() {
                 style={{
                   flex: '0 0 auto', width: 90, height: 90, borderRadius: '50%',
                   background: friend.tint, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  overflow: 'hidden', fontSize: 40,
+                  overflow: 'hidden',
                 }}
                 aria-hidden
               >
-                🐾
+                <img
+                  src="/png/stop.png"
+                  alt=""
+                  style={{ width: '82%', height: '82%', objectFit: 'contain' }}
+                />
               </div>
               <div style={{ flex: '1 1 auto', minWidth: 0 }}>
                 <div style={{ fontSize: 21, fontWeight: 800, color: '#4670e6', lineHeight: 1.1, marginBottom: 5 }}>
@@ -167,12 +173,20 @@ export default function FriendsScreen() {
             <button
               type="button"
               style={{
-                height: 50, background: '#eef3ff', borderRadius: 14,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                width: '100%',
+                // episode_button.png は上下に大きな白余白を持つ。cover + center で余白を切り取り、
+                // ピル（とその中のキラキラ）を歪めずそのまま表示する。aspectRatio はピル部分の縦横比。
+                backgroundImage: 'url(/icons/episode_button.png)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                aspectRatio: '1853 / 304',
+                border: 'none', backgroundColor: 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '100%', cursor: 'pointer',
+                // PNG 内のキラキラ（左寄り約37%）に文字が重ならないよう、テキストをやや右へ寄せる。
+                padding: '0 6% 0 12%',
               }}
             >
-              <ChatIcon />
               <span style={{ fontSize: 15, fontWeight: 700, color: '#5b84f0', letterSpacing: 2 }}>話題を見る</span>
             </button>
           </div>
