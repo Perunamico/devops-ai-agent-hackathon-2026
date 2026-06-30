@@ -105,7 +105,7 @@ def test_reclassify_persists_profile_with_intensity():
     llm = {
         "category": "public",
         "interests": ["キャンプ"],
-        "profiles": [_profile("キャンプ", "自然・アウトドア", "high")],
+        "profiles": [_profile("キャンプ", "アウトドア", "high")],
     }
     agent, db = make_reclassify_agent(llm, window)
 
@@ -120,9 +120,9 @@ def test_reclassify_persists_profile_with_intensity():
 
 
 def test_reclassify_merges_same_topic_and_overwrites_intensity():
-    existing = [_profile("キャンプ", "自然・アウトドア", "medium")]
+    existing = [_profile("キャンプ", "アウトドア", "medium")]
     window = [{"user_message": "やっぱりキャンプ最高", "pet_reply": "ね！"}]
-    llm = {"category": "public", "profiles": [_profile("キャンプ", "自然・アウトドア", "high")]}
+    llm = {"category": "public", "profiles": [_profile("キャンプ", "アウトドア", "high")]}
     agent, db = make_reclassify_agent(llm, window, existing_profiles=existing)
 
     agent.reclassify_recent("user1")
@@ -137,8 +137,8 @@ def test_reclassify_splits_multi_topic():
     llm = {
         "category": "public",
         "profiles": [
-            _profile("キャンプ", "自然・アウトドア", "high"),
-            _profile("料理", "食・グルメ", "medium"),
+            _profile("キャンプ", "アウトドア", "high"),
+            _profile("料理", "グルメ・食べ歩き", "medium"),
         ],
     }
     agent, db = make_reclassify_agent(llm, window)

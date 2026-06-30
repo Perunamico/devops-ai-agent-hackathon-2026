@@ -24,6 +24,8 @@ from app.schemas.encounter import (
 from app.schemas.memory import (
     MemoryApproveRequest,
     MemoryClassifyResult,
+    MemoryListItem,
+    MemoryListResponse,
     PublicMemoryResponse,
     ReviewItem,
 )
@@ -223,6 +225,19 @@ def get_public_memory(
         public_conversation_hooks=mem.get("public_conversation_hooks", []),
         shareable_interests=mem.get("shareable_interests", []),
         updated_at=mem.get("updated_at", ""),
+    )
+
+
+@app.get("/memories", response_model=MemoryListResponse)
+def get_memories(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    memories = db.get_memory_list(uid)
+    return MemoryListResponse(
+        review=[MemoryListItem(**item) for item in memories["review"]],
+        allowed=[MemoryListItem(**item) for item in memories["allowed"]],
+        secret=[MemoryListItem(**item) for item in memories["secret"]],
     )
 
 

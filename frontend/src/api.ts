@@ -5,6 +5,7 @@ import type {
   ChatRequest,
   ChatResponse,
   MemoryClassifyResult,
+  MemoryListResponse,
   PublicMemoryResponse,
   ReviewItem,
   ExchangeTokenResponse,
@@ -47,6 +48,9 @@ export const sendChat = (body: ChatRequest) =>
 
 export const getPublicMemory = () =>
   apiFetch<PublicMemoryResponse>('/memories/public');
+
+export const getMemories = () =>
+  apiFetch<MemoryListResponse>('/memories');
 
 export const getReviewItems = () =>
   apiFetch<ReviewItem[]>('/memories/review');
