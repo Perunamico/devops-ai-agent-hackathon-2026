@@ -11,15 +11,22 @@ from app.utils.rule_filter import is_obviously_blocked
 logger = logging.getLogger(__name__)
 
 _CLASSIFY_PROMPT = """\
-あなたはユーザーのAIペットの「記憶整理エージェント」です。
-直近の会話を読み、ユーザーの「嗜好プロフィール」を整理し、共有してよい範囲を判断してください。
+あなたはユーザーのAIペットの「会話まとめエージェント」です。
+直近の会話を読み、ユーザーが話した内容を**エピソード単位で1つに要約**して残します。
+性格や価値観を診断・推測するエージェントではありません。ユーザーが実際に話したことを、事実ベースで短くまとめます。
 
 ## あなたの役割（ここが重要）
-- 会話の中で**話題の区切りを自分で判断**し、同じ話題に関する複数の発話は**1つのプロフィールにまとめる**。
-- 1つの発話に複数の話題が含まれていれば、**別々のプロフィールに分割**する。
-- 相槌・短い反応（うん / へえ / まあ / なるほど / うん！ など）は、**単独で新しいプロフィールや確認項目を作らない**。
-  直前の話題に紐づけ、その**熱量から「どのくらい好きか」(intensity)** を見極める手がかりとして使う。無視・スキップはしない。
-- 事実や状況を嗜好と決めつけない（例:「居酒屋でバイトしている」=「居酒屋が好き」ではない）。確証がなければ contents には入れず、intensity も控えめにする。
+- 会話を読み、まとまった話題（エピソード）ごとに**1つの要約**を作る。1エピソード=1件。
+- 「エピソード」とは、ユーザーが実際に話した出来事・体験・好きなもの・最近のことなど、中身のある話のかたまり。
+- 同じ話題に関する複数の発話は**1つにまとめる**。話が途中・未完成でも、中身があれば1件にしてよい（完成を待たない）。
+- 1つの発話に明らかに別々の話題が含まれていれば別のエピソードに分ける。ただし無理に細かく割らない。
+- 次のものは**エピソードにしない**（profiles は空、要約も作らない）:
+  - あいさつ（おはよう / こんにちは など）・相槌（うん / へえ / なるほど など）・短い反応だけ。
+  - ユーザーについて何も分からない中身のない一言。
+  相槌は単独で項目を作らず、直前のエピソードの熱量(intensity)を見極める手がかりにする。
+- **性格・心理の言い換えを禁止**する。「〜を好む人」「気持ちが良いと感じている」のような人柄・内面の決めつけはしない。
+  「ユーザーが何を話したか」を事実ベースで1行にする（例:「朝すっきり起きられたと話した」）。
+- 事実や状況を嗜好と決めつけない（例:「居酒屋でバイトしている」=「居酒屋が好き」ではない）。
 
 直近の会話（古い→新しい）:
 {conversation}
@@ -30,10 +37,10 @@ _CLASSIFY_PROMPT = """\
 過去の共有禁止トピック:
 {blocked_topics_json}
 
-## 嗜好プロフィールの抽出（profiles）
-今回の会話で読み取れた、または更新された話題について、トピックごとに分けて配列で出す。
-会話に新しい嗜好の手がかりが無ければ profiles は空配列でよい。
-各プロフィールは大・中・小カテゴリーで整理する。
+## エピソードの抽出（profiles）
+今回の会話で出たエピソードを、エピソードごとに分けて配列で出す（1エピソード=1件）。
+あいさつ・相槌だけ、または中身のある話が無ければ profiles は空配列でよい。
+各エピソードは大・中・小カテゴリーで整理する。
 
 - category_large（大カテゴリー）は次の100個から必ず1つ選ぶ:
   アニメ / マンガ / 映画 / ドラマ / お笑い・バラエティ / アイドル / 声優 / 動画配信・YouTube / 読書・小説 / 推し活 /
@@ -51,26 +58,20 @@ _CLASSIFY_PROMPT = """\
   恋愛・結婚 / 家族・子育て / 仕事・キャリア / ボランティア・社会貢献 / その他
   （どれにも当てはまらなければ "その他"）
 - category_medium（中カテゴリー）・category_small（小カテゴリー）は自由記述で具体化する。
-  例: 大=エンタメ / 中=アニメ / 小=SF作品
-- preference は like | interested | dislike | conditional（好き・嫌いの**向き**）。
-- intensity は low | medium | high（**どのくらい強く好きか/関心があるか**。preference とは独立）。
-  言い回しや相槌の熱量から推定する（例:「ハマってる」「めっちゃ」「うん！」→ high、
-  「まあ」「ぼちぼち」「別に」「普通」→ low、判断材料が薄ければ medium）。
+  例: 大=アニメ / 中=SF / 小=作品名
+- topic は「何の話か」を表す短い見出しにする。
+- preference は like | interested | dislike | conditional（好き・嫌いの**向き**）。会話から無理なく分かる範囲で。分からなければ interested。
+- intensity は low | medium | high（**どのくらい強く好きか/関心があるか**）。
+  言い回しや相槌の熱量から推定する（「ハマってる」「めっちゃ」→ high、「まあ」「別に」→ low、判断材料が薄ければ medium）。
+- preference・intensity は決めつけない。あくまで会話に表れた範囲でよい。
 
-各プロフィールの contents には、嗜好の手がかりを要素ごとに分けて入れる。
-要素ごとに label と shareability（共有してよい範囲）を必ず付ける。
-
-label:
-- example: 具体的な作品・場所・行動・体験
-- reason: 好き・苦手の理由
-- emotion: 紐づく感情
-- context: その嗜好が出やすい場面
-- social_mode: 友達とどう共有したいか
-- boundary: 好きな条件・苦手になる条件
-- related_topic: 関連して話題にしやすいもの
+各エピソードの contents には、**そのエピソードの1行要約を1件だけ**入れる（reason / emotion などに細かく分割しない）。
+- label は "example" を使い、content に「ユーザーが話した内容の事実ベースの1行要約」を書く。
+- 「〜を好む人」「〜と感じている」のような性格・内面の言い換えはしない。
+- shareability（共有してよい範囲）と confidence を必ず付ける。
 
 shareability:
-- ok: 友達との共通点探しに使ってよい
+- ok: 友達との共通点探しに使ってよい（趣味・関心など当たり障りのない話題）
 - summary_only: 要約だけ使ってよい
 - private: 共通点探しには使わない
 - unknown: まだ確認していない（迷ったらこれ）
@@ -96,11 +97,11 @@ confidence は low | medium | high。推測が強いほど low にする。
 出力JSON:
 {{
   "category": "private|public|blocked|review_required",
-  "interests": ["抽出した興味・関心"],
-  "values": ["抽出した価値観"],
+  "interests": ["話に出たトピック名（性格の評価ではなく話題そのもの）"],
+  "values": [],
   "recent_topics": ["きっかけになりやすい最近の話題"],
-  "conversation_style_notes": "会話スタイルの観察（任意・短く）",
-  "safe_summary": "友達のペットに伝えてよい要約（publicの場合のみ・個人情報を含めない）",
+  "conversation_style_notes": "",
+  "safe_summary": "review_requiredのときだけ、何の話題かを個人情報抜きで1行。それ以外は空文字",
   "blocked_reason": "blockedの場合のみ理由",
   "review_reason": "review_requiredの場合のみ理由",
   "profiles": [
@@ -123,8 +124,9 @@ confidence は low | medium | high。推測が強いほど low にする。
   ]
 }}
 
-注意: safe_summary と shareability=ok の内容は、具体的な個人情報を含まない抽象表現にする。
-例: "カフェで作業するのが好き" → OK / "渋谷の〇〇カフェの会員" → NG
+注意: shareability=ok の内容は、具体的な個人情報を含まない表現にする。
+例: "カフェで作業した話" → OK / "渋谷の〇〇カフェの会員" → NG
+カードは「エピソード1つにつき1枚」。同じ話を理由・感情などに分けて複数のカードにしない。
 """
 
 _UPDATE_PROMPT = """\
@@ -208,20 +210,9 @@ class MemoryAgent:
     def _route_and_persist(
         self, user_id: str, result: MemoryClassifyResult, blocked_content: str
     ) -> None:
-        if result.category == "public":
-            self._db.upsert_public_memory(user_id, {
-                "safe_summaries": [result.safe_summary] if result.safe_summary else [],
-                "safe_topic_tags": result.interests,
-                "shareable_interests": result.interests,
-                "public_conversation_hooks": result.recent_topics,
-            })
-            self._db.upsert_private_memory(user_id, {
-                "interests": result.interests,
-                "values": result.values,
-                "recent_topics": result.recent_topics,
-                "conversation_style_notes": result.conversation_style_notes,
-            })
-        elif result.category == "private":
+        if result.category in ("public", "private"):
+            # 公開カードはここでは作らず、_persist_profiles で統合済みプロフィールから作り直す
+            # （union 追記でカードが増え続けるのを防ぐ）。
             self._db.upsert_private_memory(user_id, {
                 "interests": result.interests,
                 "values": result.values,
@@ -283,12 +274,14 @@ class MemoryAgent:
                 # 詳細は出さず、トピック名だけを要約として共有
                 shareable_summaries.append(topic)
 
-        if shareable_tags or shareable_interests or shareable_summaries:
-            self._db.upsert_public_memory(user_id, {
-                "safe_topic_tags": list(dict.fromkeys(shareable_tags)),
-                "shareable_interests": list(dict.fromkeys(shareable_interests)),
-                "safe_summaries": list(dict.fromkeys(shareable_summaries)),
-            })
+        # 公開カードは毎回、統合済みプロフィール全体から作り直して置換する。
+        # union 追記しないので 1トピック1枚に保たれ、共有対象が減れば減る。
+        self._db.set_public_memory_fields(user_id, {
+            "safe_topic_tags": list(dict.fromkeys(shareable_tags)),
+            "shareable_interests": list(dict.fromkeys(shareable_interests)),
+            "safe_summaries": list(dict.fromkeys(shareable_summaries)),
+            "public_conversation_hooks": list(dict.fromkeys(result.recent_topics or [])),
+        })
 
     def _llm_classify(
         self, conversation: str, blocked_topics: list[str], existing_profiles: list[dict]

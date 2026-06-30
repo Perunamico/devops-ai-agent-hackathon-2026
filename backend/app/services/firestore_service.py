@@ -158,6 +158,17 @@ class FirestoreService:
         merged["updated_at"] = self._now().isoformat()
         self._set(f"users/{user_id}/memories", "public", merged)
 
+    def set_public_memory_fields(self, user_id: str, data: dict) -> None:
+        """公開メモリの指定フィールドを丸ごと置換する（union 追記しない）。
+
+        upsert_public_memory はリストを追記マージするため、毎ターン再構成すると
+        カードが増え続ける。公開カードは統合済みプロフィールから作り直して置換する。
+        """
+        existing = self._get(f"users/{user_id}/memories", "public") or {}
+        existing.update(data)
+        existing["updated_at"] = self._now().isoformat()
+        self._set(f"users/{user_id}/memories", "public", existing)
+
     def set_private_memory_profiles(self, user_id: str, profiles: list[dict]) -> None:
         """嗜好プロフィール配列を丸ごと上書きする（毎ターン再構成のマージ結果を反映）。
 

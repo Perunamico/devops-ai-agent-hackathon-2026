@@ -7,7 +7,6 @@ from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException
 from app.agents.encounter_agent import EncounterAgent
 from app.agents.conversation_agent import ConversationAgent
 from app.agents.memory_agent import MemoryAgent
-from app.agents.pet_persona_agent import PetPersonaAgent
 from app.agents.topic_agent import TopicAgent
 from app.config import Settings, get_settings
 from app.schemas.chat import ChatRequest, ChatResponse
@@ -122,31 +121,17 @@ def _extract_initial_profile_bg(
     uid: str,
     body: PetCreate,
 ) -> None:
-    """初期プロフィール抽出（LLM）とメモリ保存。
+    """ペット作成時のメモリ初期化。
 
-    ペット表示には不要で、Gemini 呼び出し（リトライ込みで数秒）と Firestore 書き込みが
-    レスポンスをブロックして「名付け後の待ち」を長くしていたため、バックグラウンドで実行する。
+    ペットの性格・口調は会話のトーン用に private memory に保存するだけにする。
+    ユーザーはまだ何も話していないため、興味や公開カードはここでは作らない
+    （ペットの性格をユーザーの嗜好として勝手にカード化しない）。
     """
     try:
-        persona_agent = PetPersonaAgent(ai)
-        result = persona_agent.extract_initial_profile(body, {
-            "personality": body.personality,
-            "tone": body.tone,
+        db.upsert_private_memory(uid, {
+            "pet_personality": body.personality,
+            "pet_tone": body.tone,
         })
-        if result.category in ("public", "private"):
-            db.upsert_private_memory(uid, {
-                "interests": result.interests,
-                "values": result.values,
-                "pet_personality": body.personality,
-                "pet_tone": body.tone,
-            })
-        if result.category == "public" and result.safe_summary:
-            db.upsert_public_memory(uid, {
-                "safe_summaries": [result.safe_summary],
-                "shareable_interests": result.interests,
-                "safe_topic_tags": result.interests,
-                "public_conversation_hooks": [],
-            })
     except Exception as e:
         logger.error("initial profile background task failed for %s: %s", uid, e)
 

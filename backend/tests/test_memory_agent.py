@@ -56,14 +56,26 @@ def test_classify_obviously_blocked():
 
 
 def test_classify_public():
-    agent, db = make_agent()
+    agent, db = make_agent({
+        "category": "public",
+        "interests": ["カフェ作業"],
+        "values": [],
+        "recent_topics": ["朝の静かな時間"],
+        "conversation_style_notes": "",
+        "safe_summary": "",
+        "blocked_reason": "",
+        "review_reason": "",
+        "profiles": [_profile("カフェ作業", "カフェ巡り", "medium")],
+    })
     result = agent.classify_and_store(
         "user1",
         UserInputCreate(input_type="chat", content="カフェで作業するのが好きです"),
     )
     assert result.category == "public"
     assert "カフェ作業" in result.interests
-    db.upsert_public_memory.assert_called_once()
+    # 公開カードは統合済みプロフィールから作り直して置換する（union 追記しない）。
+    db.set_public_memory_fields.assert_called()
+    db.set_private_memory_profiles.assert_called_once()
     db.upsert_private_memory.assert_called_once()
 
 
