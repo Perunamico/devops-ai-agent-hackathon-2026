@@ -100,6 +100,28 @@ class FirestoreService:
         self._set(f"users/{user_id}/chat_messages", message_id, data)
         return message_id
 
+    def get_recent_chat_messages(self, user_id: str, limit: int = 8) -> list[dict]:
+        """直近の会話を created_at 昇順（古い→新しい）で末尾 limit 件返す。
+
+        Firestore は order_by で取得、in-memory フォールバックは _list が順序を保証しないため
+        created_at でソートする。
+        """
+        collection = f"users/{user_id}/chat_messages"
+        if self._db:
+            from google.cloud import firestore
+            docs = (
+                self._db.collection(collection)
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+                .limit(limit)
+                .stream()
+            )
+            items = [{**d.to_dict(), "id": d.id} for d in docs]
+            items.reverse()  # 昇順に戻す
+            return items
+        items = self._list(collection)
+        items.sort(key=lambda m: m.get("created_at", ""))
+        return items[-limit:]
+
     # ---- memories ----
 
     def upsert_private_memory(self, user_id: str, data: dict) -> None:
@@ -113,6 +135,17 @@ class FirestoreService:
         merged = _merge_memory(existing, data)
         merged["updated_at"] = self._now().isoformat()
         self._set(f"users/{user_id}/memories", "public", merged)
+
+    def set_private_memory_profiles(self, user_id: str, profiles: list[dict]) -> None:
+        """嗜好プロフィール配列を丸ごと上書きする（毎ターン再構成のマージ結果を反映）。
+
+        upsert_private_memory はリストを追記マージするため、トピック更新では重複が残る。
+        ここでは profiles フィールドだけを置き換える。
+        """
+        existing = self._get(f"users/{user_id}/memories", "private") or {}
+        existing["profiles"] = profiles
+        existing["updated_at"] = self._now().isoformat()
+        self._set(f"users/{user_id}/memories", "private", existing)
 
     def get_public_memory(self, user_id: str) -> dict | None:
         return self._get(f"users/{user_id}/memories", "public")

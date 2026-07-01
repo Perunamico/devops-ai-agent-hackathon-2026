@@ -8,41 +8,30 @@ def make_agent(reply: dict | None = None, raise_error: bool = False):
     if raise_error:
         ai.generate_json.side_effect = RuntimeError("LLM error")
     else:
-        ai.generate_json.side_effect = [
-            {
-                "category": "public",
-                "interests": ["写真"],
-                "values": [],
-                "recent_topics": ["写真の話"],
-                "conversation_style_notes": "",
-                "safe_summary": "写真に興味がある",
-                "blocked_reason": "",
-                "review_reason": "",
-            },
-            reply or {
-                "reply": "写真いいね。どんなものを撮るのが好き？",
-                "intent": "interest_discovery",
-                "ui_hint": {"emotion": "curious", "animation": "stretch"},
-            },
-        ]
+        ai.generate_json.return_value = reply or {
+            "reply": "写真いいね。どんなものを撮るのが好き？",
+            "intent": "interest_discovery",
+            "ui_hint": {"emotion": "curious", "animation": "stretch"},
+        }
     db = MagicMock()
-    db.get_blocked_topics.return_value = []
     db.get_pet_by_user.return_value = {"name": "ポチ", "personality": "やさしい", "tone": "穏やか"}
-    db.get_private_memory.return_value = {}
+    db.get_recent_chat_messages.return_value = []
     return ConversationAgent(ai, db), db
 
 
-def test_chat_returns_natural_reply_and_stores_memory():
+def test_chat_returns_natural_reply_and_does_not_classify_synchronously():
     agent, db = make_agent()
 
     result = agent.chat("user1", "最近写真にハマってる")
 
     assert result.reply == "写真いいね。どんなものを撮るのが好き？"
     assert result.intent == "interest_discovery"
-    assert result.memory is not None
-    assert result.memory.category == "public"
-    db.upsert_public_memory.assert_called_once()
+    # 分類は非同期に分離したので、発話エージェントの同期パスでは記憶を作らない。
+    assert result.memory is None
     db.save_chat_message.assert_called_once()
+    db.upsert_public_memory.assert_not_called()
+    db.upsert_private_memory.assert_not_called()
+    db.add_review_required.assert_not_called()
 
 
 def test_chat_falls_back_when_reply_generation_fails():
@@ -51,6 +40,5 @@ def test_chat_falls_back_when_reply_generation_fails():
     result = agent.chat("user1", "今日は疲れた")
 
     assert result.reply
-    assert result.memory is not None
-    assert result.memory.category == "private"
+    assert result.memory is None
     db.save_chat_message.assert_called_once()
