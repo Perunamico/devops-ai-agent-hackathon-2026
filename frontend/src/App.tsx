@@ -48,6 +48,9 @@ interface AppCtx {
   // 名付け前のラベル選択で選んだ「好きなもの」。命名完了(createPet)後に登録するため保持する。
   selectedLabels: SelectedLabel[];
   setSelectedLabels: (v: SelectedLabel[]) => void;
+  // 交流成立中(session_active)フラグ。true の間は上部ホーム戻りバーを隠す（Issue #103）。
+  interactionActive: boolean;
+  setInteractionActive: (v: boolean) => void;
 }
 
 export const AppContext = createContext<AppCtx>({
@@ -71,6 +74,8 @@ export const AppContext = createContext<AppCtx>({
   setPetBubble: () => {},
   selectedLabels: [],
   setSelectedLabels: () => {},
+  interactionActive: false,
+  setInteractionActive: () => {},
 });
 
 export function useApp() {
@@ -85,9 +90,12 @@ const NAV_ITEMS: { screen: Screen; label: string; iconImg: string }[] = [
 ];
 
 function TopNav() {
-  const { screen, setScreen, setExchangeSetupStep, homeLoading, naming, reviewCount } = useApp();
+  const { screen, setScreen, setExchangeSetupStep, homeLoading, naming, reviewCount, interactionActive } = useApp();
 
   if (homeLoading || naming) return null;
+
+  // 交流成立中はホームへの戻りバーを出さない（Issue #103）。バイバイで終える導線に一本化する。
+  if (interactionActive) return null;
 
   // ホーム以外（記憶/ひみつ画面を含む）は上部にホーム戻りバーを表示する。
   if (screen !== 'home') {
@@ -320,6 +328,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   const [reviewCount, setReviewCount] = useState(0);
   const [petBubble, setPetBubble] = useState<string | null>(null);
   const [selectedLabels, setSelectedLabels] = useState<SelectedLabel[]>([]);
+  const [interactionActive, setInteractionActive] = useState(false);
   // 名付け前のラベル選択が済んだか。pet が未作成のとき、まずラベル選択を出す。
   const [labelsChosen, setLabelsChosen] = useState(initialPet !== null);
   const [auth, setAuth] = useState<AuthState | null>(initialPet ? {
@@ -382,6 +391,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     reviewCount, setReviewCount,
     petBubble, setPetBubble,
     selectedLabels, setSelectedLabels,
+    interactionActive, setInteractionActive,
   };
 
   async function handleMicNext() {
