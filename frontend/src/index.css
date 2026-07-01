@@ -42,7 +42,23 @@ body {
 }
 
 /* ペット映像の高さ。ホーム・命名・鳴き声通信で共通に使う */
-:root { --pet-size: 40vh; }
+:root {
+  --pet-size: 40vh;
+  --nav-bottom: 5rem;   /* 下ナビ(home)の高さ分。コンテンツ下余白・高さ計算に使う */
+  --nav-top: 3.5rem;    /* 上戻りバー(他画面)の高さ分 */
+  --nav-side: 0px;      /* 左サイドバー幅。スマホは0、PC幅で有効化 */
+}
+
+/* PC幅(>=768px)では機能ナビを左脇の縦並びへ移し、コンテンツを左に広げる(issue-61)。
+   ナビ寸法を0/サイド幅にすることで各画面の高さ計算・余白へ自動伝播させる。 */
+@media (min-width: 768px) {
+  :root {
+    --nav-bottom: 0px;
+    --nav-top: 0px;
+    --nav-side: 5.5rem;
+    --pet-size: 70vh;   /* 縦スペースが空くので動画を大きく */
+  }
+}
 
 .fixed { position: fixed; }
 .absolute { position: absolute; }
@@ -134,7 +150,6 @@ body {
 .min-h-svh { min-height: 100svh; }
 .min-h-\[60vh\] { min-height: 60vh; }
 .min-h-\[70vh\] { min-height: 70vh; }
-.h-\[calc\(100dvh-5rem\)\] { height: calc(100dvh - 5rem); }
 .max-w-sm { max-width: 24rem; }
 .max-w-md { max-width: 28rem; }
 .max-w-\[240px\] { max-width: 240px; }
@@ -368,4 +383,101 @@ body {
   0%   { opacity: 0; transform: translateY(0)     rotate(-10deg) scale(0.7); }
   20%  { opacity: 1; }
   100% { opacity: 0; transform: translateY(-90px) rotate(12deg)  scale(1.1); }
+}
+
+/* =====================================================================
+   issue-61: PC幅(>=768px)で機能ナビを左脇の縦サイドバーへ。
+   スマホ幅では下(home)/上(他画面)の固定バーという現行レイアウトを維持する。
+   ===================================================================== */
+
+/* アプリ全体の枠。スマホ=旧 "max-w-md mx-auto min-h-svh relative bg-white" と同値 */
+.app-shell {
+  max-width: 28rem;
+  margin-left: auto;
+  margin-right: auto;
+  min-height: 100svh;
+  position: relative;
+  background: #fff;
+}
+/* コンテンツ側はナビの固定バー分だけ余白を空ける(変数経由) */
+.app-content.nav-bottom { padding-bottom: var(--nav-bottom); }
+.app-content.nav-top    { padding-top: var(--nav-top); }
+
+@media (min-width: 768px) {
+  /* 左サイドバー + 従来のスマホ幅(28rem)コンテンツ を横に並べ、全体を中央寄せ。
+     コンテンツ幅は据え置きなので吹き出し/入力欄は崩れず、空いた縦スペースで動画が伸びる。 */
+  .app-shell {
+    max-width: calc(28rem + var(--nav-side));
+    margin-left: auto;
+    margin-right: auto;
+    display: flex;
+    align-items: stretch;
+  }
+  .app-content {
+    flex: 1 1 0%;
+    min-width: 0;           /* 変数0化で上下paddingは自動的に消える */
+  }
+}
+
+/* 機能ナビ本体。スマホ=固定バー、PC=左の縦サイドバー */
+.side-nav {
+  position: fixed;
+  background: #fff;
+  z-index: 50;
+  max-width: 28rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+.side-nav--home {            /* ホーム: 旧 下ナビ(h-20, gap-2, px-3 py-2) */
+  left: 0; right: 0; bottom: 0;
+  height: 5rem;
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+.side-nav--sub {             /* 他画面: 旧 上戻りバー(h-14, px-4) */
+  left: 0; right: 0; top: 0;
+  height: 3.5rem;
+  display: flex;
+  align-items: center;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 768px) {
+  .side-nav {
+    position: static;
+    width: var(--nav-side);
+    max-width: none;
+    margin: 0;
+    min-height: 100svh;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: stretch;
+    border-right: 1px solid #e5e7eb;
+  }
+  .side-nav--home { height: auto; bottom: auto; padding: 0.5rem; }
+  .side-nav--home button { flex: 0 0 auto; padding-top: 0.5rem; padding-bottom: 0.5rem; }
+  .side-nav--sub { height: auto; top: auto; align-items: stretch; padding: 0.5rem; }
+  .side-nav--sub button { flex-direction: column; gap: 0.25rem; justify-content: center; }
+}
+
+/* HomeScreen のメイン高さ。スマホ=旧 calc(100dvh-5rem)、PC=100dvh(縦フル) */
+.h-screen-minus-nav { height: calc(100dvh - var(--nav-bottom)); }
+
+/* ExchangeScreen(探索/交流中)のルート。スマホ=旧 fixed top-0 left-0 right-0 max-w-md mx-auto */
+.exchange-fixed {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  max-width: 28rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (min-width: 768px) {
+  .exchange-fixed {       /* PC: サイドバーの右側にフル幅・フル高さで表示 */
+    left: var(--nav-side);
+    right: 0;
+    max-width: none;
+    margin: 0;
+  }
 }

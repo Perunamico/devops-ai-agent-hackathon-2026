@@ -62,7 +62,7 @@ export default function FriendsScreen() {
   return (
     <div
       style={{
-        minHeight: 'calc(100svh - 3.5rem)',
+        minHeight: 'calc(100svh - var(--nav-top))',
         background: 'linear-gradient(180deg,#f2f5ff 0%,#ffffff 240px)',
         color: '#3f4d66',
         fontFamily: "'M PLUS Rounded 1c','Hiragino Maru Gothic ProN',system-ui,sans-serif",

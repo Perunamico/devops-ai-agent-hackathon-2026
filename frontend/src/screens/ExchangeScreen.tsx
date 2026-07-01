@@ -475,8 +475,8 @@ export default function ExchangeScreen() {
   if (step === 'exchanging' || step === 'failed' || step === 'resolving' || step === 'waiting') {
     return (
       <div
-        className="flex flex-col bg-white fixed top-0 left-0 right-0 max-w-md mx-auto z-40"
-        style={{ height: 'calc(100dvh - 5rem)' }}
+        className="flex flex-col bg-white exchange-fixed z-40"
+        style={{ height: 'calc(100dvh - var(--nav-bottom))' }}
       >
         {/* 縦位置をホーム画面と厳密一致させるための疑似表札（非表示・高さのみ確保）。
             上部の戻りバー(z-50)はこの空きスロット上に重なって表示される。 */}
