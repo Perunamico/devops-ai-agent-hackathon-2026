@@ -262,7 +262,19 @@ class MemoryAgent:
         new_dicts = [p.model_dump() for p in result.profiles]
         merged = _merge_profiles_by_topic(existing, new_dicts)
         self._db.set_private_memory_profiles(user_id, merged)
+        self._rebuild_public_from_profiles(
+            user_id, merged, conversation_hooks=result.recent_topics or []
+        )
 
+    def _rebuild_public_from_profiles(
+        self, user_id: str, merged: list[dict], conversation_hooks: list[str] | None = None
+    ) -> None:
+        """統合済みプロフィール全体から公開メモリの共有フィールドを作り直して置換する。
+
+        union 追記しないので 1トピック1枚に保たれ、共有対象が減れば減る。
+        conversation_hooks を None にすると既存の hooks を保持する（ラベル更新時など会話由来の
+        hooks を消さないため）。
+        """
         shareable_tags: list[str] = []
         shareable_interests: list[str] = []
         shareable_summaries: list[str] = []
@@ -283,14 +295,65 @@ class MemoryAgent:
                 # 詳細は出さず、トピック名だけを要約として共有
                 shareable_summaries.append(topic)
 
-        # 公開カードは毎回、統合済みプロフィール全体から作り直して置換する。
-        # union 追記しないので 1トピック1枚に保たれ、共有対象が減れば減る。
-        self._db.set_public_memory_fields(user_id, {
+        fields = {
             "safe_topic_tags": list(dict.fromkeys(shareable_tags)),
             "shareable_interests": list(dict.fromkeys(shareable_interests)),
             "safe_summaries": list(dict.fromkeys(shareable_summaries)),
-            "public_conversation_hooks": list(dict.fromkeys(result.recent_topics or [])),
-        })
+        }
+        if conversation_hooks is not None:
+            fields["public_conversation_hooks"] = list(dict.fromkeys(conversation_hooks))
+        self._db.set_public_memory_fields(user_id, fields)
+
+    def apply_selected_labels(self, user_id: str, labels: list[dict]) -> list[dict]:
+        """ルールベースで選んだ「好きなもの」ラベルをプロフィール化して保存する。
+
+        既存の origin=="label" プロフィールを全除去し、新しい選択で作り直す
+        （設定画面での編集＝置換）。LLM を通さず、category_large のみ検証する。
+        戻り値は保存した正本ラベル（不正カテゴリーを丸めた後）。
+        """
+        canonical: list[dict] = []
+        label_profiles: list[dict] = []
+        seen: set[str] = set()
+        for label in labels:
+            name = str(label.get("name") or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            category = label.get("category_large")
+            if category not in LARGE_CATEGORIES:
+                category = "その他"
+            medium = str(label.get("category_medium") or "").strip()
+            small = str(label.get("category_small") or "").strip()
+            canonical.append({
+                "name": name,
+                "category_large": category,
+                "category_medium": medium,
+                "category_small": small,
+            })
+            label_profiles.append({
+                "topic": name,
+                "category_large": category,
+                "category_medium": medium,
+                "category_small": small,
+                "preference": "like",
+                "intensity": "high",
+                "origin": "label",
+                "contents": [{
+                    "label": "reason",
+                    "content": name,
+                    "shareability": "ok",
+                    "confidence": "high",
+                }],
+            })
+
+        # 既存の会話由来プロフィールは残し、ラベル由来のみ入れ替える。
+        existing = [p for p in self._get_existing_profiles(user_id) if p.get("origin") != "label"]
+        merged = _merge_profiles_by_topic(existing, label_profiles)
+        self._db.set_private_memory_profiles(user_id, merged)
+        # 会話由来の hooks を消さないよう conversation_hooks は触らない。
+        self._rebuild_public_from_profiles(user_id, merged, conversation_hooks=None)
+        self._db.set_selected_labels(user_id, canonical)
+        return canonical
 
     def _llm_classify(
         self, conversation: str, blocked_topics: list[str], existing_profiles: list[dict]

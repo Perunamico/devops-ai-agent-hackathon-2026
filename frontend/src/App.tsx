@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import type { PetResponse } from './types';
+import type { PetResponse, SelectedLabel } from './types';
 import { getCurrentPet } from './api';
 import {
   createAccountWithEmail,
@@ -19,6 +19,7 @@ import ReportScreen from './screens/ReportScreen';
 import PetExchangeScreen from './screens/PetExchangeScreen';
 import FriendsScreen from './screens/FriendsScreen';
 import SettingsScreen from './screens/SettingsScreen';
+import LabelSelectScreen from './screens/LabelSelectScreen';
 
 type Screen = 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange' | 'friends' | 'settings';
 type ExchangeSetupStep = null | 'mic' | 'requesting_mic' | 'volume';
@@ -44,6 +45,9 @@ interface AppCtx {
   // AppContext に置く（ローカル state だと戻るたびに初期挨拶へ戻ってしまう）。
   petBubble: string | null;
   setPetBubble: (v: string | null) => void;
+  // 名付け前のラベル選択で選んだ「好きなもの」。命名完了(createPet)後に登録するため保持する。
+  selectedLabels: SelectedLabel[];
+  setSelectedLabels: (v: SelectedLabel[]) => void;
 }
 
 export const AppContext = createContext<AppCtx>({
@@ -65,6 +69,8 @@ export const AppContext = createContext<AppCtx>({
   setReviewCount: () => {},
   petBubble: null,
   setPetBubble: () => {},
+  selectedLabels: [],
+  setSelectedLabels: () => {},
 });
 
 export function useApp() {
@@ -313,6 +319,9 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   const [naming, setNaming] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
   const [petBubble, setPetBubble] = useState<string | null>(null);
+  const [selectedLabels, setSelectedLabels] = useState<SelectedLabel[]>([]);
+  // 名付け前のラベル選択が済んだか。pet が未作成のとき、まずラベル選択を出す。
+  const [labelsChosen, setLabelsChosen] = useState(initialPet !== null);
   const [auth, setAuth] = useState<AuthState | null>(initialPet ? {
     configured: false,
     signedIn: true,
@@ -333,6 +342,9 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
         setPetBubble(null);
         setReviewCount(0);
         setScreen('home');
+        // サインアウト時はラベル選択オンボーディングもリセットする。
+        setLabelsChosen(false);
+        setSelectedLabels([]);
       }
     });
   }, [initialPet, setPetBubble]);
@@ -369,6 +381,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     naming, setNaming,
     reviewCount, setReviewCount,
     petBubble, setPetBubble,
+    selectedLabels, setSelectedLabels,
   };
 
   async function handleMicNext() {
@@ -387,6 +400,11 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     setScreen('exchange');
   }
 
+  // 名付け前のオンボーディング: 好きなものラベルの選択。pet 未作成かつ未選択のとき表示する。
+  // QRトークンから来た交流フローは対象外（そのまま exchange へ）。
+  // homeLoading 中（既存ペット取得中）は判定を保留し、オンボーディングのちらつきを防ぐ。
+  const showLabelOnboarding = pet === null && !labelsChosen && !hasQrToken && !homeLoading;
+
   function renderScreen() {
     switch (screen) {
       case 'home': return <HomeScreen />;
@@ -402,6 +420,22 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
 
   if (authLoading) return <AuthLoadingScreen />;
   if (!initialPet && auth?.configured && !auth.signedIn) return <AuthScreen />;
+  if (showLabelOnboarding) {
+    return (
+      <AppContext.Provider value={ctx}>
+        <div className="app-shell">
+          <LabelSelectScreen
+            initial={selectedLabels}
+            mode="onboarding"
+            onDone={(labels) => {
+              setSelectedLabels(labels);
+              setLabelsChosen(true);
+            }}
+          />
+        </div>
+      </AppContext.Provider>
+    );
+  }
 
   return (
     <AppContext.Provider value={ctx}>
