@@ -165,6 +165,24 @@ def create_pet(
     )
 
 
+@app.get("/pets/me", response_model=PetResponse | None)
+def get_current_pet(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    pet = db.get_pet_by_user(uid)
+    if not pet:
+        return None
+    return PetResponse(
+        pet_id=pet.get("id", ""),
+        user_id=uid,
+        name=pet.get("name", ""),
+        personality=pet.get("personality", ""),
+        tone=pet.get("tone", ""),
+        created_at=pet.get("created_at", ""),
+    )
+
+
 @app.post("/inputs", response_model=MemoryClassifyResult)
 def submit_input(
     body: UserInputCreate,

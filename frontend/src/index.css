@@ -478,10 +478,13 @@ body {
   margin-right: auto;
 }
 @media (min-width: 768px) {
-  .exchange-fixed {       /* PC: サイドバーの右側にフル幅・フル高さで表示 */
-    left: var(--nav-side);
-    right: 0;
-    max-width: none;
+  .exchange-fixed {
+    /* PC: ホーム画面の app-content と同じ 28rem 幅に固定する。
+       右側いっぱいに広げると表札/吹き出し/動画領域が横伸びして潰れて見える。 */
+    left: calc(50% - 11.25rem);
+    right: auto;
+    width: 28rem;
+    max-width: calc(100vw - var(--nav-side));
     margin: 0;
   }
 }
