@@ -6,6 +6,7 @@ import { getCurrentPet } from './api';
 import {
   createAccountWithEmail,
   resendVerificationEmail,
+  sendPasswordReset,
   signInWithEmail,
   subscribeAuthState,
   type AuthState,
@@ -143,6 +144,7 @@ function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -163,6 +165,36 @@ function AuthScreen() {
       setError(authErrorMessage(err));
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handlePasswordReset() {
+    if (!email.trim() || resetting) {
+      setError('パスワード再設定にはメールアドレスを入力してください。');
+      setNotice('');
+      return;
+    }
+    setResetting(true);
+    setError('');
+    setNotice('');
+    try {
+      await sendPasswordReset(email.trim());
+      setNotice('パスワード再設定メールを送信しました。');
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    setError('');
+    setNotice('');
+    try {
+      await resendVerificationEmail();
+      setNotice('確認メールを再送しました。');
+    } catch (err) {
+      setError(authErrorMessage(err));
     }
   }
 
@@ -231,9 +263,28 @@ function AuthScreen() {
           {submitting ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : mode === 'signup' ? '登録する' : 'ログインする'}
         </button>
 
-        <div className="min-h-[44px] text-center text-sm leading-relaxed">
+        <div className="min-h-[76px] text-center text-sm leading-relaxed">
           {error && <p className="text-red-500">{error}</p>}
           {notice && <p className="text-gray-500">{notice}</p>}
+          {mode === 'signin' && (
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={resetting}
+              className="mt-2 text-xs font-bold text-violet-600 disabled:text-gray-300"
+            >
+              {resetting ? '送信中...' : 'パスワードを忘れた場合'}
+            </button>
+          )}
+          {mode === 'signup' && notice && (
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              className="mt-2 text-xs font-bold text-violet-600"
+            >
+              確認メールを再送
+            </button>
+          )}
         </div>
       </form>
     </div>
@@ -244,31 +295,6 @@ function AuthLoadingScreen() {
   return (
     <div className="min-h-svh bg-white flex items-center justify-center">
       <span className="w-10 h-10 rounded-full border-4 border-violet-200 border-t-violet-500 animate-spin" />
-    </div>
-  );
-}
-
-function VerifyNotice({ auth }: { auth: AuthState }) {
-  const [sent, setSent] = useState(false);
-
-  if (!auth.signedIn || auth.emailVerified) return null;
-
-  return (
-    <div className="fixed left-3 right-3 top-3 z-[80] rounded-2xl bg-white border border-violet-100 shadow-lg px-4 py-3 flex items-center gap-3">
-      <p className="flex-1 text-xs text-gray-600 leading-relaxed">
-        確認メールを送信済みです。届いていない場合は再送できます。
-      </p>
-      <button
-        type="button"
-        onClick={() => {
-          resendVerificationEmail()
-            .then(() => setSent(true))
-            .catch(() => setSent(false));
-        }}
-        className="text-xs font-bold text-violet-600 whitespace-nowrap"
-      >
-        {sent ? '送信済み' : '再送'}
-      </button>
     </div>
   );
 }
@@ -380,7 +406,6 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   return (
     <AppContext.Provider value={ctx}>
       <div className="app-shell">
-        {auth && <VerifyNotice auth={auth} />}
         <TopNav />
         <div className={(screen === 'home' && homeLoading) ? 'app-content' : screen === 'home' ? 'app-content nav-bottom' : 'app-content nav-top'}>
 

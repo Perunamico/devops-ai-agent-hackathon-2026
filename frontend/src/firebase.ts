@@ -4,6 +4,7 @@ import {
   getAuth,
   onAuthStateChanged,
   sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
   type User,
@@ -137,6 +138,12 @@ export async function resendVerificationEmail(): Promise<void> {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in.');
   await sendEmailVerification(user);
+}
+
+export async function sendPasswordReset(email: string): Promise<void> {
+  const auth = getConfiguredAuth();
+  if (!auth) throw new Error('Firebase is not configured.');
+  await sendPasswordResetEmail(auth, email);
 }
 
 export async function signOutUser(): Promise<void> {
