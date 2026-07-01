@@ -126,10 +126,9 @@ declare global {
 
 
 export default function HomeScreen() {
-  const { pet, setPet, setHomeLoading, setNaming, setReviewCount } = useApp();
+  const { pet, setPet, setHomeLoading, setNaming, setReviewCount, petBubble, setPetBubble } = useApp();
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [petBubble, setPetBubble] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
 

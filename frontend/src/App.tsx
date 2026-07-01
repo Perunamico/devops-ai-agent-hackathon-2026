@@ -31,6 +31,10 @@ interface AppCtx {
   setNaming: (v: boolean) => void;
   reviewCount: number;
   setReviewCount: (n: number) => void;
+  // ペットの直近の返答。ホーム離脱→復帰で HomeScreen が再マウントされても保持するため
+  // AppContext に置く（ローカル state だと戻るたびに初期挨拶へ戻ってしまう）。
+  petBubble: string | null;
+  setPetBubble: (v: string | null) => void;
 }
 
 export const AppContext = createContext<AppCtx>({
@@ -50,6 +54,8 @@ export const AppContext = createContext<AppCtx>({
   setNaming: () => {},
   reviewCount: 0,
   setReviewCount: () => {},
+  petBubble: null,
+  setPetBubble: () => {},
 });
 
 export function useApp() {
@@ -122,6 +128,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   const [homeLoading, setHomeLoading] = useState(false);
   const [naming, setNaming] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
+  const [petBubble, setPetBubble] = useState<string | null>(null);
 
   const ctx: AppCtx = {
     screen, setScreen,
@@ -133,6 +140,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     homeLoading, setHomeLoading,
     naming, setNaming,
     reviewCount, setReviewCount,
+    petBubble, setPetBubble,
   };
 
   async function handleMicNext() {

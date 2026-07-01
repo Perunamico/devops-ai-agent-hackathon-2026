@@ -144,6 +144,23 @@ class FirestoreService:
         items.sort(key=lambda m: m.get("created_at", ""))
         return items[-limit:]
 
+    def count_chat_messages(self, user_id: str) -> int:
+        """これまでの会話往復数（chat_messages ドキュメント数）を返す。
+
+        記憶要約を注入するタイミング判定に使う。Firestore は count 集約クエリ、
+        in-memory フォールバックは _list の件数で数える。
+        """
+        collection = f"users/{user_id}/chat_messages"
+        if self._db:
+            try:
+                result = self._db.collection(collection).count().get()
+                # count().get() は [[AggregationResult(value=...)]] を返す
+                return int(result[0][0].value)
+            except Exception as e:
+                logger.warning("count_chat_messages aggregation failed, falling back to stream: %s", e)
+                return sum(1 for _ in self._db.collection(collection).stream())
+        return len(self._list(collection))
+
     # ---- memories ----
 
     def upsert_private_memory(self, user_id: str, data: dict) -> None:
