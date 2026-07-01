@@ -726,7 +726,6 @@ export default function ExchangeScreen() {
 
               <button onClick={handleBye} className={styles.byeButton}>
                 バイバイする
-                <img src="/icons/baibai.png" alt="" className={styles.baibaiInline} />
               </button>
             </>
           )}

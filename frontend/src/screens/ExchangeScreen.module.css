@@ -151,3 +151,19 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
+
+/* PC（横広）では縦に収まることを優先。スマホは横幅いっぱいのまま、
+   PC は動画の高さを画面高でキャップし、メッセージ枠・ボタンまで 1画面に収める。
+   正方形動画は object-fit:contain で左右レターボックスして中央表示する。 */
+@media (min-width: 768px) {
+  .screen {
+    min-height: 100svh;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem 0;
+  }
+
+  .video {
+    max-height: 50vh;
+  }
+}
