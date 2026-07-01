@@ -33,7 +33,7 @@ def test_issue_token():
 
     assert result.payload_raw == [1, 2, 3, 4]
     assert result.token_key == "abc123"
-    assert result.qr_url.endswith("/exchange?exchangeToken=abc123")
+    assert result.qr_url.endswith("/?exchangeToken=abc123")
     db.save_exchange_token.assert_called_once()
 
 
@@ -95,7 +95,7 @@ def test_resolve_token_matches_when_reverse_match_exists():
     db.create_exchange_session.return_value = "session1"
     db._list.return_value = []
 
-    with patch("app.agents.encounter_agent.asyncio.get_event_loop") as get_event_loop:
+    with patch("app.agents.encounter_agent._run_background_coro") as run_bg:
         result = agent.resolve_token("user2", [1, 2, 3])
 
     assert result.status == "matched"
@@ -103,7 +103,28 @@ def test_resolve_token_matches_when_reverse_match_exists():
     db.create_exchange_session.assert_called_once()
     db.mark_exchange_token_used.assert_any_call("abc")
     db.mark_exchange_token_used.assert_any_call("reverse")
-    get_event_loop.return_value.call_soon.assert_called_once()
+    run_bg.assert_called_once()
+    run_bg.call_args.args[0].close()
+
+
+def test_scan_qr_token_matches_and_notifies_owner_poll():
+    agent, _ai, db, _token_svc = make_agent()
+    db.get_exchange_token.return_value = {
+        "token_key": "abc",
+        "issued_by": "user1",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+        "used": False,
+    }
+    db.create_exchange_session.return_value = "session1"
+
+    with patch("app.agents.encounter_agent._run_background_coro") as run_bg:
+        result = agent.scan_qr_token("user2", "abc")
+
+    assert result.status == "matched"
+    assert result.session_id == "session1"
+    db.mark_exchange_token_used_with_session.assert_called_once_with("abc", "session1")
+    run_bg.assert_called_once()
+    run_bg.call_args.args[0].close()
 
 
 # ---- _match_profiles_to_topics ----
