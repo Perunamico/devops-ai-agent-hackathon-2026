@@ -2,6 +2,15 @@
 
 ユーザーの趣味嗜好を記憶し、近くにいる他ユーザーのAIペットと**鳴き声通信**で交流することで、自然な会話のきっかけを提案するWebアプリです。
 
+## デプロイ先
+
+| 環境 | URL | 備考 |
+|------|-----|------|
+| Production (`main`) | https://gen-lang-client-0099285268.web.app | `main` への merge / push 後に自動デプロイ |
+| Development (`dev`) | https://gen-lang-client-0099285268-dev.web.app | `dev` への merge / push 後に自動デプロイ |
+
+PR の動作確認用 Preview URL は、各 PR の `Deploy Preview` コメントに表示されます。
+
 ## 仕様ドキュメント
 
 | ファイル | 内容 |

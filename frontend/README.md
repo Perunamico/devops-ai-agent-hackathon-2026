@@ -2,6 +2,15 @@
 
 Next.js + React + TypeScript のフロントエンドです。Firebase Hosting へ static export して配信します。
 
+## Deployed URLs
+
+| Environment | URL |
+|-------------|-----|
+| Production (`main`) | https://gen-lang-client-0099285268.web.app |
+| Development (`dev`) | https://gen-lang-client-0099285268-dev.web.app |
+
+PR preview URLs are posted to each PR as a `Deploy Preview` comment.
+
 ## Local Development
 
 ```bash

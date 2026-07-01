@@ -7,6 +7,28 @@ from app.config import Settings
 
 logger = logging.getLogger(__name__)
 
+# private プロフィール内の content を get_memory_list の確認依頼項目として
+# 採番するときの ID 規則。承認API側（resolve_review_item）でこの ID を解釈する。
+_PROFILE_CONTENT_ID_PREFIX = "private-profile-"
+
+
+def _profile_content_id(profile_index: int, content_index: int) -> str:
+    return f"{_PROFILE_CONTENT_ID_PREFIX}{profile_index}-{content_index}"
+
+
+def _parse_profile_content_id(item_id: str) -> tuple[int, int] | None:
+    """`private-profile-{i}-{j}` を (i, j) に解析する。
+    トピック単位の `private-profile-{i}` や他形式の ID は None を返す。"""
+    if not item_id.startswith(_PROFILE_CONTENT_ID_PREFIX):
+        return None
+    parts = item_id[len(_PROFILE_CONTENT_ID_PREFIX):].split("-")
+    if len(parts) != 2:
+        return None
+    try:
+        return int(parts[0]), int(parts[1])
+    except ValueError:
+        return None
+
 
 class FirestoreService:
     def __init__(self, settings: Settings):
@@ -136,6 +158,17 @@ class FirestoreService:
         merged["updated_at"] = self._now().isoformat()
         self._set(f"users/{user_id}/memories", "public", merged)
 
+    def set_public_memory_fields(self, user_id: str, data: dict) -> None:
+        """公開メモリの指定フィールドを丸ごと置換する（union 追記しない）。
+
+        upsert_public_memory はリストを追記マージするため、毎ターン再構成すると
+        カードが増え続ける。公開カードは統合済みプロフィールから作り直して置換する。
+        """
+        existing = self._get(f"users/{user_id}/memories", "public") or {}
+        existing.update(data)
+        existing["updated_at"] = self._now().isoformat()
+        self._set(f"users/{user_id}/memories", "public", existing)
+
     def set_private_memory_profiles(self, user_id: str, profiles: list[dict]) -> None:
         """嗜好プロフィール配列を丸ごと上書きする（毎ターン再構成のマージ結果を反映）。
 
@@ -166,25 +199,195 @@ class FirestoreService:
         items = self._list(f"users/{user_id}/review_required")
         return [i for i in items if i.get("status") == "pending"]
 
+    def get_memory_list(self, user_id: str) -> dict[str, list[dict]]:
+        review = [
+            {
+                "id": item.get("id", ""),
+                "summary": item.get("candidate_summary", ""),
+                "detail": item.get("reason", ""),
+                "source": "review_required",
+                "created_at": item.get("created_at", ""),
+                "can_approve": True,
+            }
+            for item in self.get_review_items(user_id)
+            if item.get("candidate_summary")
+        ]
+
+        allowed: list[dict] = []
+        secret: list[dict] = []
+        seen_allowed: set[str] = set()
+        seen_secret: set[str] = set()
+
+        def add_item(items: list[dict], seen: set[str], item: dict) -> None:
+            summary = str(item.get("summary") or "").strip()
+            if not summary or summary in seen:
+                return
+            seen.add(summary)
+            items.append({**item, "summary": summary})
+
+        private_memory = self.get_private_memory(user_id) or {}
+        public_memory = self.get_public_memory(user_id) or {}
+        profiles = private_memory.get("profiles") or []
+
+        # 公開カードのチップに出す「中身のカテゴリー(category_large)」の対応表。
+        # いずれもメモリ保存エージェントが決めたカテゴリーを使う:
+        #   - profiles 由来の要約 → そのプロフィールの category_large
+        #   - review 承認など profiles を通らない要約 → 保存済み summary_categories
+        summary_category: dict[str, str] = dict(public_memory.get("summary_categories") or {})
+        for profile in profiles:
+            large = profile.get("category_large") or ""
+            if not large:
+                continue
+            for content in profile.get("contents") or []:
+                text = str(content.get("content") or "").strip()
+                if text:
+                    summary_category[text] = large
+
+        for index, value in enumerate(public_memory.get("safe_summaries") or []):
+            add_item(allowed, seen_allowed, {
+                "id": f"public-safe_summaries-{index}",
+                "summary": value,
+                "detail": "公開要約",
+                "source": "public",
+                "created_at": public_memory.get("updated_at", ""),
+                # チップは中身のカテゴリーのみ。対応が無ければ空にしてチップを出さない。
+                "category": summary_category.get(str(value).strip(), ""),
+            })
+
+        for profile_index, profile in enumerate(profiles):
+            topic = profile.get("topic") or "未分類の記憶"
+            category = " / ".join(
+                part for part in (
+                    profile.get("category_large"),
+                    profile.get("category_medium"),
+                    profile.get("category_small"),
+                )
+                if part
+            )
+            contents = profile.get("contents") or []
+            if not contents and topic not in seen_allowed:
+                add_item(secret, seen_secret, {
+                    "id": f"private-profile-{profile_index}",
+                    "summary": topic,
+                    "detail": category,
+                    "source": "private",
+                    "created_at": private_memory.get("updated_at", ""),
+                    "category": profile.get("category_large", ""),
+                })
+            for content_index, content in enumerate(contents):
+                shareability = content.get("shareability")
+                item = {
+                    "id": _profile_content_id(profile_index, content_index),
+                    "summary": content.get("content") or topic,
+                    "detail": category or topic,
+                    "source": "private",
+                    "created_at": private_memory.get("updated_at", ""),
+                    "category": profile.get("category_large", "") or topic,
+                }
+                if shareability in ("ok", "summary_only"):
+                    add_item(allowed, seen_allowed, item | {"source": "public"})
+                elif shareability == "unknown":
+                    # 共有可否が未確認の内容は確認依頼に出し、公開/非公開を選べるようにする。
+                    review.append(item | {"can_approve": True})
+                else:
+                    add_item(secret, seen_secret, item)
+
+        # interests / hooks / tags はマッチング用に保存はするが、カードとしては並べない。
+        # interests / values / recent_topics はトピックのタグであり、
+        # エピソード（profiles）と重複する。カードとしては並べない（保存は維持）。
+
+        for key, detail in (
+            ("conversation_style_notes", "会話スタイル"),
+            ("preferred_suggestion_style", "提案スタイル"),
+        ):
+            value = private_memory.get(key)
+            if value:
+                add_item(secret, seen_secret, {
+                    "id": f"private-{key}",
+                    "summary": value,
+                    "detail": detail,
+                    "source": "private",
+                    "created_at": private_memory.get("updated_at", ""),
+                    "category": detail,
+                })
+
+        for index, item in enumerate(self._list(f"users/{user_id}/blocked_memories")):
+            add_item(secret, seen_secret, {
+                "id": item.get("id", f"blocked-{index}"),
+                "summary": item.get("blocked_topic", ""),
+                "detail": item.get("reason", "共有しない情報"),
+                "source": "blocked",
+                "created_at": item.get("created_at", ""),
+            })
+
+        return {"review": review, "allowed": allowed, "secret": secret}
+
     def get_blocked_topics(self, user_id: str) -> list[str]:
         blocked = self._list(f"users/{user_id}/blocked_memories")
         return [b.get("blocked_topic", "") for b in blocked if b.get("blocked_topic")]
 
     def resolve_review_item(self, user_id: str, item_id: str, action: str) -> None:
+        # private プロフィール内の未確認(unknown)内容は review_required ドキュメントを
+        # 持たないため、profiles の shareability を直接書き換えて確定する。
+        location = _parse_profile_content_id(item_id)
+        if location is not None:
+            self._resolve_profile_content(user_id, location, action)
+            return
+
         item = self._get(f"users/{user_id}/review_required", item_id)
         if not item:
             return
         if action == "approve":
+            candidate = item.get("candidate_summary", "")
+            category = item.get("category_large", "")
             self.upsert_public_memory(user_id, {
-                "safe_summaries": [item.get("candidate_summary", "")],
+                "safe_summaries": [candidate],
                 "safe_topic_tags": [],
                 "public_conversation_hooks": [],
                 "shareable_interests": [],
+                # カードのチップに出すカテゴリー（エージェントが決めたもの）を保存。
+                "summary_categories": {candidate: category} if candidate else {},
             })
             self._set(f"users/{user_id}/review_required", item_id, {**item, "status": "approved"})
         elif action == "reject":
             self.add_blocked_memory(user_id, {"blocked_topic": item.get("candidate_summary", ""), "reason": "user_rejected"})
             self._set(f"users/{user_id}/review_required", item_id, {**item, "status": "rejected"})
+
+    def _resolve_profile_content(
+        self, user_id: str, location: tuple[int, int], action: str
+    ) -> None:
+        """private プロフィール内の content の shareability を確定する。
+        approve なら "ok"（公開へ反映）、reject なら "private"（秘匿のまま）。"""
+        profile_index, content_index = location
+        private_memory = self.get_private_memory(user_id) or {}
+        profiles = private_memory.get("profiles") or []
+        if not (0 <= profile_index < len(profiles)):
+            return
+        profile = profiles[profile_index]
+        contents = profile.get("contents") or []
+        if not (0 <= content_index < len(contents)):
+            return
+        content = contents[content_index]
+
+        if action == "approve":
+            content["shareability"] = "ok"
+            self.set_private_memory_profiles(user_id, profiles)
+            # _persist_profiles の公開反映に倣い、要約・興味・タグを Public Memory へ追加。
+            category_path = [
+                profile.get("category_large"),
+                profile.get("category_medium"),
+                profile.get("category_small"),
+            ]
+            text = content.get("content")
+            topic = profile.get("topic")
+            self.upsert_public_memory(user_id, {
+                "safe_summaries": [text] if text else [],
+                "shareable_interests": [topic] if topic else [],
+                "safe_topic_tags": [t for t in category_path if t],
+            })
+        elif action == "reject":
+            content["shareability"] = "private"
+            self.set_private_memory_profiles(user_id, profiles)
 
     # ---- exchange tokens (新方式: payloadRaw ベース) ----
 
@@ -316,6 +519,10 @@ def _merge_memory(existing: dict, new: dict) -> dict:
         if isinstance(value, list) and isinstance(result.get(key), list):
             combined = result[key] + [v for v in value if v not in result[key]]
             result[key] = combined[:50]  # cap list size
+        elif isinstance(value, dict) and isinstance(result.get(key), dict):
+            merged = dict(result[key])
+            merged.update(value)
+            result[key] = merged
         else:
             result[key] = value
     return result

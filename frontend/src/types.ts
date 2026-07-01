@@ -70,6 +70,22 @@ export interface ReviewItem {
   created_at: string;
 }
 
+export interface MemoryListItem {
+  id: string;
+  summary: string;
+  detail: string;
+  source: 'review_required' | 'public' | 'private' | 'blocked';
+  created_at: string;
+  can_approve: boolean;
+  category?: string;
+}
+
+export interface MemoryListResponse {
+  review: MemoryListItem[];
+  allowed: MemoryListItem[];
+  secret: MemoryListItem[];
+}
+
 // ---- Exchange（新方式: payloadRaw ベース）----
 
 export interface ExchangeTokenResponse {

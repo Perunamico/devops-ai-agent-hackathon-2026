@@ -68,6 +68,7 @@ function TopNav() {
 
   if (homeLoading || naming) return null;
 
+  // ホーム以外（記憶/ひみつ画面を含む）は上部にホーム戻りバーを表示する。
   if (screen !== 'home') {
     return (
       <nav className="side-nav side-nav--sub" style={{ willChange: 'transform' }}>
