@@ -113,7 +113,7 @@ function TopNav() {
             if (item.screen === 'petexchange') setExchangeSetupStep('mic');
             else setScreen(item.screen);
           }}
-          className="flex-1 flex flex-col items-center justify-center gap-1 bg-gray-50 border border-gray-200 shadow-sm rounded-2xl transition-all"
+          className="flex-1 flex flex-col items-center justify-center gap-1 bg-white border border-gray-200 shadow-sm rounded-2xl transition-all"
         >
           <div className="relative">
             <img src={item.iconImg} className="w-8 h-8 object-contain" alt={item.label} />
