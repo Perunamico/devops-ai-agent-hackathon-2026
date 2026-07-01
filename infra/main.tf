@@ -17,15 +17,44 @@ provider "google" {
 locals {
   runtime_service_account_id = "ai-pet-api-runner"
 
-  cloud_run_env = {
-    USE_VERTEX_AI        = "true"
-    GOOGLE_CLOUD_PROJECT = var.project_id
-    FIRESTORE_DATABASE   = var.firestore_database
-    VERTEX_AI_LOCATION   = var.region
-    GEMINI_MODEL         = var.gemini_model
-    SKIP_AUTH            = "false"
-    FIRESTORE_ENABLED    = "true"
-  }
+  cloud_run_env_base = [
+    {
+      name  = "USE_VERTEX_AI"
+      value = "true"
+    },
+    {
+      name  = "GOOGLE_CLOUD_PROJECT"
+      value = var.project_id
+    },
+    {
+      name  = "FIRESTORE_DATABASE"
+      value = var.firestore_database
+    },
+    {
+      name  = "VERTEX_AI_LOCATION"
+      value = var.region
+    },
+    {
+      name  = "GEMINI_MODEL"
+      value = var.gemini_model
+    },
+    {
+      name  = "SKIP_AUTH"
+      value = "false"
+    },
+    {
+      name  = "FIRESTORE_ENABLED"
+      value = "true"
+    },
+  ]
+
+  cloud_run_secret_env = [
+    {
+      name    = "GEMINI_API_KEY"
+      secret  = google_secret_manager_secret.gemini_key.secret_id
+      version = "latest"
+    },
+  ]
 }
 
 resource "google_project_service" "required" {
@@ -92,15 +121,13 @@ module "cloud_run_prod" {
   service_name          = var.prod_cloud_run_service
   image                 = var.cloud_run_image
   service_account_email = google_service_account.cloud_run_runtime.email
-  env_vars = merge(local.cloud_run_env, {
-    APP_BASE_URL = var.prod_app_base_url
-  })
-  secret_env_vars = {
-    GEMINI_API_KEY = {
-      secret  = google_secret_manager_secret.gemini_key.secret_id
-      version = "latest"
-    }
-  }
+  env_vars = concat(local.cloud_run_env_base, [
+    {
+      name  = "APP_BASE_URL"
+      value = var.prod_app_base_url
+    },
+  ])
+  secret_env_vars = local.cloud_run_secret_env
 
   depends_on = [
     module.artifact_registry,
@@ -118,15 +145,13 @@ module "cloud_run_dev" {
   service_name          = var.dev_cloud_run_service
   image                 = var.cloud_run_image
   service_account_email = google_service_account.cloud_run_runtime.email
-  env_vars = merge(local.cloud_run_env, {
-    APP_BASE_URL = var.dev_app_base_url
-  })
-  secret_env_vars = {
-    GEMINI_API_KEY = {
-      secret  = google_secret_manager_secret.gemini_key.secret_id
-      version = "latest"
-    }
-  }
+  env_vars = concat(local.cloud_run_env_base, [
+    {
+      name  = "APP_BASE_URL"
+      value = var.dev_app_base_url
+    },
+  ])
+  secret_env_vars = local.cloud_run_secret_env
 
   depends_on = [
     module.artifact_registry,

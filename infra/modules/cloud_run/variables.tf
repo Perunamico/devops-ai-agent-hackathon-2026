@@ -24,16 +24,20 @@ variable "service_account_email" {
 }
 
 variable "env_vars" {
-  description = "Plain environment variables."
-  type        = map(string)
-  default     = {}
+  description = "Plain environment variables in Cloud Run env order."
+  type = list(object({
+    name  = string
+    value = string
+  }))
+  default = []
 }
 
 variable "secret_env_vars" {
-  description = "Secret Manager backed environment variables."
-  type = map(object({
+  description = "Secret Manager backed environment variables in Cloud Run env order."
+  type = list(object({
+    name    = string
     secret  = string
     version = string
   }))
-  default = {}
+  default = []
 }
