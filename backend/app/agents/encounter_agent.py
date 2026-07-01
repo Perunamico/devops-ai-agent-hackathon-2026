@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import random
+import threading
 import uuid
 from datetime import datetime, timezone
 
@@ -19,6 +20,21 @@ from app.services.token_service import TokenService
 from app.services.vertex_ai_service import VertexAIService
 
 logger = logging.getLogger(__name__)
+
+
+def _run_background_coro(coro) -> None:
+    """Run an async background task from FastAPI sync routes.
+
+    Sync endpoints are executed in an AnyIO worker thread where
+    asyncio.get_event_loop() can raise. If a loop is already running, schedule
+    onto it; otherwise run the coroutine in a short-lived daemon thread.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        threading.Thread(target=lambda: asyncio.run(coro), daemon=True).start()
+        return
+    loop.create_task(coro)
 
 _MATCH_PROMPT = """\
 あなたはAIペットの仲介役です。2人のユーザーのAIペットが交流しました。
@@ -125,7 +141,7 @@ class EncounterAgent:
             "used": False,
         })
         base_url = get_settings().app_base_url.rstrip("/")
-        qr_url = f"{base_url}/exchange?exchangeToken={token_key}"
+        qr_url = f"{base_url}/?exchangeToken={token_key}"
         return ExchangeTokenResponse(
             payload_raw=payload_raw,
             token_key=token_key,
@@ -210,10 +226,8 @@ class EncounterAgent:
                 break
 
         # LLM で共通メッセージを非同期生成
-        asyncio.get_event_loop().call_soon(
-            lambda: asyncio.ensure_future(
-                self._generate_common_message_async(session_id, token_owner_id, resolver_id)
-            )
+        _run_background_coro(
+            self._generate_common_message_async(session_id, token_owner_id, resolver_id)
         )
 
         return session_id
@@ -361,10 +375,8 @@ class EncounterAgent:
         })
         self._db.mark_exchange_token_used_with_session(token_key, session_id)
 
-        asyncio.get_event_loop().call_soon(
-            lambda: asyncio.ensure_future(
-                self._generate_common_message_async(session_id, token_owner_id, user_id)
-            )
+        _run_background_coro(
+            self._generate_common_message_async(session_id, token_owner_id, user_id)
         )
         return ResolveExchangeResponse(status="matched", session_id=session_id)
 

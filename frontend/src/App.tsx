@@ -1,7 +1,16 @@
 'use client';
 
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { PetResponse } from './types';
+import { getCurrentPet } from './api';
+import {
+  createAccountWithEmail,
+  resendVerificationEmail,
+  sendPasswordReset,
+  signInWithEmail,
+  subscribeAuthState,
+  type AuthState,
+} from './firebase';
 import HomeScreen from './screens/HomeScreen';
 import ReviewScreen from './screens/ReviewScreen';
 import ExchangeScreen from './screens/ExchangeScreen';
@@ -115,6 +124,181 @@ function TopNav() {
   );
 }
 
+function authErrorMessage(error: unknown): string {
+  const code = typeof error === 'object' && error && 'code' in error
+    ? String((error as { code?: string }).code)
+    : '';
+  if (code.includes('invalid-email')) return 'メールアドレスの形式を確認してください。';
+  if (code.includes('weak-password')) return 'パスワードは6文字以上で入力してください。';
+  if (code.includes('email-already-in-use')) return 'このメールアドレスはすでに登録されています。';
+  if (code.includes('operation-not-allowed')) return 'メール/パスワード認証がまだ有効になっていません。Firebase Console の Authentication で有効化してください。';
+  if (code.includes('invalid-credential') || code.includes('wrong-password') || code.includes('user-not-found')) {
+    return 'メールアドレスまたはパスワードが違います。';
+  }
+  if (code.includes('too-many-requests')) return '試行回数が多すぎます。少し待ってから再試行してください。';
+  return '処理に失敗しました。時間をおいてもう一度試してください。';
+}
+
+function AuthScreen() {
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
+    setNotice('');
+    try {
+      if (mode === 'signup') {
+        await createAccountWithEmail(email.trim(), password);
+        setNotice('確認メールを送信しました。');
+      } else {
+        await signInWithEmail(email.trim(), password);
+      }
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handlePasswordReset() {
+    if (!email.trim() || resetting) {
+      setError('パスワード再設定にはメールアドレスを入力してください。');
+      setNotice('');
+      return;
+    }
+    setResetting(true);
+    setError('');
+    setNotice('');
+    try {
+      await sendPasswordReset(email.trim());
+      setNotice('パスワード再設定メールを送信しました。');
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    setError('');
+    setNotice('');
+    try {
+      await resendVerificationEmail();
+      setNotice('確認メールを再送しました。');
+    } catch (err) {
+      setError(authErrorMessage(err));
+    }
+  }
+
+  return (
+    <div className="min-h-svh bg-white flex items-center justify-center px-5">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+        <div className="text-center space-y-2 pb-2">
+          <h1 className="text-xl font-bold text-gray-900">おかえりなさい</h1>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            ペットの名前や記憶をあなたのアカウントに保存します。
+          </p>
+        </div>
+
+        <div className="flex rounded-full bg-gray-100 p-1 border border-gray-200">
+          <button
+            type="button"
+            onClick={() => {
+              setMode('signin');
+              setError('');
+              setNotice('');
+            }}
+            className={`flex-1 rounded-full py-2 text-sm font-bold transition-colors ${mode === 'signin' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+          >
+            ログイン
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMode('signup');
+              setError('');
+              setNotice('');
+            }}
+            className={`flex-1 rounded-full py-2 text-sm font-bold transition-colors ${mode === 'signup' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
+          >
+            新規登録
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="メールアドレス"
+            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white"
+            required
+          />
+          <input
+            type="password"
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="パスワード"
+            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white"
+            minLength={6}
+            required
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={!email.trim() || password.length < 6 || submitting}
+          className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+        >
+          {submitting ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : mode === 'signup' ? '登録する' : 'ログインする'}
+        </button>
+
+        <div className="min-h-[76px] text-center text-sm leading-relaxed">
+          {error && <p className="text-red-500">{error}</p>}
+          {notice && <p className="text-gray-500">{notice}</p>}
+          {mode === 'signin' && (
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={resetting}
+              className="mt-2 text-xs font-bold text-violet-600 disabled:text-gray-300"
+            >
+              {resetting ? '送信中...' : 'パスワードを忘れた場合'}
+            </button>
+          )}
+          {mode === 'signup' && notice && (
+            <button
+              type="button"
+              onClick={handleResendVerification}
+              className="mt-2 text-xs font-bold text-violet-600"
+            >
+              確認メールを再送
+            </button>
+          )}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function AuthLoadingScreen() {
+  return (
+    <div className="min-h-svh bg-white flex items-center justify-center">
+      <span className="w-10 h-10 rounded-full border-4 border-violet-200 border-t-violet-500 animate-spin" />
+    </div>
+  );
+}
+
 export default function App({ initialPet = null }: { initialPet?: PetResponse | null } = {}) {
   const hasQrToken = typeof window !== 'undefined'
     ? new URLSearchParams(window.location.search).has('exchangeToken')
@@ -129,6 +313,50 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   const [naming, setNaming] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
   const [petBubble, setPetBubble] = useState<string | null>(null);
+  const [auth, setAuth] = useState<AuthState | null>(initialPet ? {
+    configured: false,
+    signedIn: true,
+    uid: initialPet.user_id,
+    isAnonymous: false,
+    email: null,
+    emailVerified: true,
+  } : null);
+  const [authLoading, setAuthLoading] = useState(!initialPet);
+
+  useEffect(() => {
+    if (initialPet) return;
+    return subscribeAuthState((state) => {
+      setAuth(state);
+      setAuthLoading(false);
+      if (!state.signedIn) {
+        setPet(null);
+        setPetBubble(null);
+        setReviewCount(0);
+        setScreen('home');
+      }
+    });
+  }, [initialPet, setPetBubble]);
+
+  useEffect(() => {
+    if (initialPet || !auth || !auth.configured || !auth.signedIn) return;
+    let cancelled = false;
+    setHomeLoading(true);
+    getCurrentPet()
+      .then((currentPet) => {
+        if (cancelled) return;
+        setPet(currentPet);
+        setPetBubble(currentPet ? `おはよう！${currentPet.name}だよ！` : null);
+      })
+      .catch(() => {
+        if (!cancelled) setPet(null);
+      })
+      .finally(() => {
+        if (!cancelled) setHomeLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [auth, initialPet, setHomeLoading, setPet, setPetBubble]);
 
   const ctx: AppCtx = {
     screen, setScreen,
@@ -171,6 +399,9 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
       case 'settings': return <SettingsScreen />;
     }
   }
+
+  if (authLoading) return <AuthLoadingScreen />;
+  if (!initialPet && auth?.configured && !auth.signedIn) return <AuthScreen />;
 
   return (
     <AppContext.Provider value={ctx}>
