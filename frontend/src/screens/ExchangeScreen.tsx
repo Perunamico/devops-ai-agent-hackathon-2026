@@ -701,7 +701,10 @@ export default function ExchangeScreen() {
           {isEnded ? (
             <>
               <div className={styles.endedNotice}>
-                <p style={{ margin: 0 }}>お相手がバイバイしました 👋</p>
+                <p style={{ margin: 0 }}>
+                  お相手がバイバイしました
+                  <img src="/icons/baibai.png" alt="バイバイ" className={styles.baibaiInline} />
+                </p>
               </div>
               {/* 交流終了後はホームへの導線が必要なため、画面内ボタンは残す（Issue #103 は上部バーのみ対象）。 */}
               <button onClick={() => setScreen('home')} className={styles.homeButton}>
@@ -722,7 +725,8 @@ export default function ExchangeScreen() {
               )}
 
               <button onClick={handleBye} className={styles.byeButton}>
-                バイバイする 👋
+                バイバイする
+                <img src="/icons/baibai.png" alt="" className={styles.baibaiInline} />
               </button>
             </>
           )}
@@ -732,19 +736,14 @@ export default function ExchangeScreen() {
   }
 
   if (step === 'session_ended') {
+    // ホームへの導線は上部のホーム戻りバーがあるため、画面内「ホームに戻る」ボタンは置かない。
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 gap-6 text-center">
-        <div className="text-5xl">👋</div>
-        <div className="space-y-2">
-          <h2 className="text-lg font-bold text-gray-900">交流が終わりました！</h2>
-          <p className="text-sm text-gray-500">また近くに来たら交流してみよう</p>
+      <div className={styles.endedScreen}>
+        <img src="/icons/baibai.png" alt="バイバイ" className={styles.baibaiHero} />
+        <div>
+          <h2 className={styles.endedTitle}>交流が終わりました！</h2>
+          <p className={styles.endedSub}>また近くに来たら交流してみよう</p>
         </div>
-        <button
-          onClick={() => setScreen('home')}
-          className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
-        >
-          ホームに戻る
-        </button>
       </div>
     );
   }
