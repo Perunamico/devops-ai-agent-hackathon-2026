@@ -27,6 +27,9 @@ from app.schemas.memory import (
     MemoryListResponse,
     PublicMemoryResponse,
     ReviewItem,
+    SelectedLabel,
+    SelectedLabelsResponse,
+    SetLabelsRequest,
 )
 from app.schemas.pet import PetCreate, PetResponse, UserInputCreate
 from app.services.firestore_service import FirestoreService
@@ -171,6 +174,32 @@ def submit_input(
 ):
     agent = MemoryAgent(ai, db)
     return agent.classify_and_store(uid, body)
+
+
+MAX_SELECTED_LABELS = 30
+
+
+@app.get("/memories/labels", response_model=SelectedLabelsResponse)
+def get_selected_labels(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    labels = db.get_selected_labels(uid)
+    return SelectedLabelsResponse(labels=[SelectedLabel(**label) for label in labels])
+
+
+@app.put("/memories/labels", response_model=SelectedLabelsResponse)
+def set_selected_labels(
+    body: SetLabelsRequest,
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+    ai: VertexAIService = Depends(get_vertex_ai),
+):
+    # 上限のみサーバ側で担保する（最低数はオンボーディング/設定 UI 側で担保）。
+    labels = [label.model_dump() for label in body.labels[:MAX_SELECTED_LABELS]]
+    agent = MemoryAgent(ai, db)
+    saved = agent.apply_selected_labels(uid, labels)
+    return SelectedLabelsResponse(labels=[SelectedLabel(**label) for label in saved])
 
 
 def _reclassify_recent_bg(db: FirestoreService, ai: VertexAIService, uid: str) -> None:

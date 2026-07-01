@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useApp } from '../App';
 import { getAuthState, signOutUser, type AuthState } from '../firebase';
+import { getSelectedLabels, putSelectedLabels } from '../api';
+import type { SelectedLabel } from '../types';
+import LabelSelectScreen from './LabelSelectScreen';
 import styles from './SettingsScreen.module.css';
 
 const APP_VERSION = '1.0.0';
@@ -87,10 +90,40 @@ export default function SettingsScreen() {
   const [sheet, setSheet] = useState<SheetKey | null>(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  // 好きなもの（ラベル）編集
+  const [editingLabels, setEditingLabels] = useState(false);
+  const [labelInitial, setLabelInitial] = useState<SelectedLabel[]>([]);
+  const [labelsReady, setLabelsReady] = useState(false);
+  const [savingLabels, setSavingLabels] = useState(false);
 
   useEffect(() => {
     getAuthState().then(setAuth);
   }, []);
+
+  async function openLabelEditor() {
+    setLabelsReady(false);
+    setEditingLabels(true);
+    try {
+      const res = await getSelectedLabels();
+      setLabelInitial(res.labels ?? []);
+    } catch {
+      setLabelInitial([]);
+    } finally {
+      setLabelsReady(true);
+    }
+  }
+
+  async function saveLabels(labels: SelectedLabel[]) {
+    setSavingLabels(true);
+    try {
+      await putSelectedLabels(labels);
+      setEditingLabels(false);
+    } catch {
+      // 保存失敗時は編集画面に留まる
+    } finally {
+      setSavingLabels(false);
+    }
+  }
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -113,12 +146,42 @@ export default function SettingsScreen() {
     return auth.isAnonymous ? 'ゲストとしてログイン中' : 'ログイン中';
   }
 
+  if (editingLabels) {
+    if (!labelsReady) {
+      return (
+        <div className={styles.screen}>
+          <p className={styles.headerSub}>好きなものを読み込み中...</p>
+        </div>
+      );
+    }
+    return (
+      <LabelSelectScreen
+        initial={labelInitial}
+        mode="settings"
+        saving={savingLabels}
+        onDone={saveLabels}
+        onCancel={() => setEditingLabels(false)}
+      />
+    );
+  }
+
   return (
     <div className={styles.screen}>
       <div>
         <h2 className={styles.headerTitle}>設定</h2>
         <p className={styles.headerSub}>アカウントとアプリの情報を確認できます。</p>
       </div>
+
+      {/* 好きなもの */}
+      <section className={styles.section}>
+        <h3 className={styles.sectionLabel}>好きなもの</h3>
+        <div className={styles.card}>
+          <button className={styles.rowButton} onClick={openLabelEditor}>
+            <span className={styles.rowPlain}>好きなものを編集</span>
+            <span className={styles.chevron}>›</span>
+          </button>
+        </div>
+      </section>
 
       {/* アカウント */}
       <section className={styles.section}>

@@ -8,6 +8,7 @@ import type {
   MemoryListResponse,
   PublicMemoryResponse,
   ReviewItem,
+  SelectedLabel,
   ExchangeTokenResponse,
   ResolveExchangeResponse,
   MatchStatusResponse,
@@ -59,6 +60,17 @@ export const approveMemory = (itemId: string, action: 'approve' | 'reject') =>
   apiFetch<void>(`/memories/${itemId}/approve`, {
     method: 'PUT',
     body: JSON.stringify({ action }),
+  });
+
+// ---- 好きなものラベル ----
+
+export const getSelectedLabels = () =>
+  apiFetch<{ labels: SelectedLabel[] }>('/memories/labels');
+
+export const putSelectedLabels = (labels: SelectedLabel[]) =>
+  apiFetch<{ labels: SelectedLabel[] }>('/memories/labels', {
+    method: 'PUT',
+    body: JSON.stringify({ labels }),
   });
 
 // ---- Exchange（新方式）----

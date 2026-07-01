@@ -197,6 +197,17 @@ class FirestoreService:
         existing["updated_at"] = self._now().isoformat()
         self._set(f"users/{user_id}/memories", "private", existing)
 
+    def get_selected_labels(self, user_id: str) -> list[dict]:
+        """ユーザーがルールベースで選んだ「好きなもの」ラベルの正本を返す。"""
+        return (self._get(f"users/{user_id}/memories", "private") or {}).get("selected_labels") or []
+
+    def set_selected_labels(self, user_id: str, labels: list[dict]) -> None:
+        """選択ラベルの正本を丸ごと置換する（設定画面での編集を反映）。"""
+        existing = self._get(f"users/{user_id}/memories", "private") or {}
+        existing["selected_labels"] = labels
+        existing["updated_at"] = self._now().isoformat()
+        self._set(f"users/{user_id}/memories", "private", existing)
+
     def get_public_memory(self, user_id: str) -> dict | None:
         return self._get(f"users/{user_id}/memories", "public")
 
