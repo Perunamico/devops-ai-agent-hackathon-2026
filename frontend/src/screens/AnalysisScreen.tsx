@@ -60,7 +60,7 @@ export default function AnalysisScreen() {
         <h2 className="text-xl font-bold text-gray-900">共通点が見つかりました！</h2>
       </div>
 
-      {/* 共通トピック */}
+      {/* 共通トピック（両者に共通表示するのはこれだけ） */}
       {data?.common_topics.length ? (
         <div>
           <p className="text-xs font-medium text-gray-500 mb-2">共通の話題</p>
@@ -74,12 +74,15 @@ export default function AnalysisScreen() {
         </div>
       ) : null}
 
-      {/* 会話のきっかけ */}
-      {data?.conversation_hooks.length ? (
-        <div className="bg-blue-50 rounded-xl p-4 space-y-1.5">
-          <p className="text-xs font-medium text-blue-700 mb-2">💬 最初の一言</p>
-          {data.conversation_hooks.map((h, i) => (
-            <p key={i} className="text-sm text-gray-700">「{h}」</p>
+      {/* あなたの好きなポイント（本人だけに表示） */}
+      {data?.personal_points?.length ? (
+        <div className="space-y-2">
+          <p className="text-xs font-medium text-gray-500 mb-1">あなたの好きなポイント</p>
+          {data.personal_points.map((p) => (
+            <div key={p.topic} className="bg-violet-50 rounded-xl p-3">
+              <p className="text-xs font-semibold text-violet-700">{p.topic}</p>
+              <p className="text-sm text-gray-700">{p.point}</p>
+            </div>
           ))}
         </div>
       ) : null}
@@ -91,20 +94,6 @@ export default function AnalysisScreen() {
           {data.on_site_cards.map((card) => (
             <OnSiteCard key={card.card_id} card={card} />
           ))}
-        </div>
-      ) : null}
-
-      {/* 関連トピック */}
-      {data?.related_topics.length ? (
-        <div>
-          <p className="text-xs font-medium text-gray-500 mb-2">関連する話題</p>
-          <div className="flex flex-wrap gap-2">
-            {data.related_topics.map((t) => (
-              <span key={t} className="bg-gray-100 text-gray-600 text-xs rounded-full px-3 py-1">
-                {t}
-              </span>
-            ))}
-          </div>
         </div>
       ) : null}
 

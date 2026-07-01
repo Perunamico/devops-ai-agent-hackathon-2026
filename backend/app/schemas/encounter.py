@@ -47,6 +47,11 @@ class ReportCard(BaseModel):
     body: str
 
 
+class PersonalPoint(BaseModel):
+    topic: str
+    point: str
+
+
 class ExchangeAnalysisResponse(BaseModel):
     session_id: str
     analysis_id: str
@@ -55,6 +60,8 @@ class ExchangeAnalysisResponse(BaseModel):
     conversation_hooks: list[str] = []
     followup_suggestions: list[str] = []
     on_site_cards: list[ReportCard] = []
+    # 呼び出し本人だけに見せる「自分の好きなポイント」。相手のぶんは返さない。
+    personal_points: list[PersonalPoint] = []
 
 
 class ReportResponse(BaseModel):

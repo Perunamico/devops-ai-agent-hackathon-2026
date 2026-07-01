@@ -328,7 +328,7 @@ def get_exchange_analysis(
     uid: str = Depends(require_auth),
     agent: EncounterAgent = Depends(_encounter),
 ):
-    return agent.get_analysis(session_id)
+    return agent.get_analysis(session_id, uid)
 
 
 @app.get("/reports/{analysis_id}", response_model=ReportResponse)
@@ -341,6 +341,9 @@ def get_report(
     analysis = db.get_exchange_analysis(analysis_id)
     if not analysis:
         raise HTTPException(status_code=404, detail="Analysis not found")
+
+    # personal_points は本人専用。レポート生成 LLM の文脈に相手のぶんを混ぜない。
+    analysis = {k: v for k, v in analysis.items() if k != "personal_points"}
 
     private_mem = db.get_private_memory(uid) or {}
     pet_tone = private_mem.get("pet_tone", "やわらかい短文")

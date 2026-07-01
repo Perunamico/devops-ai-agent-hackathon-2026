@@ -1,11 +1,17 @@
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 
 from app.schemas.chat import ChatResponse, ChatUiHint
 from app.services.firestore_service import FirestoreService
 from app.services.vertex_ai_service import VertexAIService
 
 logger = logging.getLogger(__name__)
+
+# 記憶要約を注入するタイミングの調整パラメータ。
+SESSION_GAP_MINUTES = 30  # 直近発話からこれ以上空いたら新しい会話の冒頭とみなす
+REINJECT_EVERY_TURNS = 6  # 会話が長引いたら、この往復数ごとに記憶要約を再注入する
+_MAX_MEMORY_PROFILES = 20  # 1回に載せるプロフィール数の上限
 
 _CONVERSATION_PROMPT = """\
 あなたはユーザーのAIペット（親しみやすく少し可愛いロボットペット）です。
@@ -14,6 +20,11 @@ _CONVERSATION_PROMPT = """\
 ペット情報:
 {pet_json}
 
+ご主人について覚えていること（過去の会話から把握している背景。**準備として読むだけ**）:
+{memory_summary}
+※この内容は、こちらから話題にしたり「〜だったよね」と持ち出したりしない。ご主人自身がその話をしてきたときに、
+初めて自然に踏まえて応じるためのもの。覚えていること自体を披露したり、内部の記憶や分類の存在を見せたりしない。
+
 これまでの会話（古い→新しい）:
 {history_json}
 
@@ -21,6 +32,7 @@ _CONVERSATION_PROMPT = """\
 {message}
 
 ## 振る舞い
+- ユーザーのことは「ご主人」と呼ぶ。
 - 返信はやわらかく会話らしく、基本1〜3文。
 - 基本は毎ターン、会話を少しだけ前に進める。やわらかい問いを1つ添えるか、次につながる具体的な手がかり（話題のきっかけ）を置く。共感や感想だけで終えて会話を止めない。
 - 質問は1回の返信で多くても1つ。質問攻めにはしない。
@@ -90,7 +102,9 @@ class ConversationAgent:
         pet = self._db.get_pet_by_user(user_id) or {}
         history = self._db.get_recent_chat_messages(user_id)
 
-        response = self._generate_reply(message, pet, history)
+        memory_summary = self._build_memory_summary(user_id, history)
+
+        response = self._generate_reply(message, pet, history, memory_summary)
         self._db.save_chat_message(user_id, {
             "user_message": message,
             "pet_reply": response.reply,
@@ -98,9 +112,24 @@ class ConversationAgent:
         })
         return response
 
-    def _generate_reply(self, message: str, pet: dict, history: list[dict]) -> ChatResponse:
+    def _build_memory_summary(self, user_id: str, history: list[dict]) -> str:
+        """会話の冒頭・長引いた時だけ、蓄積した記憶（private profiles）の要約を返す。
+
+        それ以外のターンは空文字を返し、プロンプトに記憶セクションを載せない。
+        """
+        turn_count = self._db.count_chat_messages(user_id)
+        last_created_at = history[-1].get("created_at") if history else None
+        if not _should_inject_memory(turn_count, last_created_at, datetime.now(timezone.utc)):
+            return ""
+        private = self._db.get_private_memory(user_id) or {}
+        return _render_memory_summary(private)
+
+    def _generate_reply(
+        self, message: str, pet: dict, history: list[dict], memory_summary: str
+    ) -> ChatResponse:
         prompt = _CONVERSATION_PROMPT.format(
             pet_json=json.dumps(pet, ensure_ascii=False),
+            memory_summary=memory_summary or "（まだ分かっていることはありません）",
             history_json=json.dumps(history, ensure_ascii=False),
             message=message,
         )
@@ -120,3 +149,75 @@ class ConversationAgent:
                 memory=None,
                 ui_hint=ChatUiHint(),
             )
+
+
+def _should_inject_memory(
+    turn_count: int, last_created_at: str | None, now: datetime
+) -> bool:
+    """記憶要約をこのターンで注入すべきか判定する（純粋関数）。
+
+    - 初回（往復0）: 会話の冒頭 → True
+    - 直近発話から SESSION_GAP_MINUTES 以上空いた: 開き直した新しい会話の冒頭 → True
+    - 往復数が REINJECT_EVERY_TURNS の倍数: 会話が長引いた再注入 → True
+    - それ以外: False
+    """
+    if turn_count <= 0:
+        return True
+
+    last = _parse_iso(last_created_at)
+    if last is not None:
+        if now - last >= timedelta(minutes=SESSION_GAP_MINUTES):
+            return True
+
+    return turn_count % REINJECT_EVERY_TURNS == 0
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+    # created_at は UTC aware で保存しているが、naive の場合は UTC とみなす。
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _render_memory_summary(private_memory: dict) -> str:
+    """private memory の profiles を、ペットが把握している背景の要約文に整形する。
+
+    1プロフィール1行。profiles が空なら空文字を返す。
+    """
+    profiles = private_memory.get("profiles") or []
+    lines: list[str] = []
+    for profile in profiles[:_MAX_MEMORY_PROFILES]:
+        topic = str(profile.get("topic") or "").strip()
+        if not topic:
+            continue
+        meta = " / ".join(
+            part for part in (
+                profile.get("category_large"),
+                f"{profile.get('preference')}・{profile.get('intensity')}"
+                if profile.get("preference") or profile.get("intensity")
+                else "",
+            )
+            if part
+        )
+        contents = "／".join(
+            str(c.get("content")).strip()
+            for c in (profile.get("contents") or [])
+            if c.get("content")
+        )
+        head = f"- {topic}（{meta}）" if meta else f"- {topic}"
+        lines.append(f"{head}: {contents}" if contents else head)
+
+    style = str(private_memory.get("conversation_style_notes") or "").strip()
+    if style:
+        lines.append(f"- 会話スタイル: {style}")
+    suggestion = str(private_memory.get("preferred_suggestion_style") or "").strip()
+    if suggestion:
+        lines.append(f"- 提案スタイル: {suggestion}")
+
+    return "\n".join(lines)

@@ -134,6 +134,11 @@ export interface ReportCard {
   body: string;
 }
 
+export interface PersonalPoint {
+  topic: string;
+  point: string;
+}
+
 export interface ExchangeAnalysisResponse {
   session_id: string;
   analysis_id: string;
@@ -142,6 +147,8 @@ export interface ExchangeAnalysisResponse {
   conversation_hooks: string[];
   followup_suggestions: string[];
   on_site_cards: ReportCard[];
+  // 本人だけに表示される「自分の好きなポイント」
+  personal_points: PersonalPoint[];
 }
 
 export interface ReportResponse {

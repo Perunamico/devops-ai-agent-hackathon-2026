@@ -118,6 +118,10 @@ const analysisResponse: ExchangeAnalysisResponse = {
   conversation_hooks: ['好きなカフェはどこ？', 'おすすめの映画は？'],
   followup_suggestions: ['今度一緒にカフェに行ってみる', 'おすすめ映画リストを共有する'],
   on_site_cards: onSiteCards,
+  personal_points: [
+    { topic: 'カフェ巡り', point: '静かな店でゆっくり過ごすのが好き' },
+    { topic: '映画鑑賞', point: '余韻が残る作品について話すのが好き' },
+  ],
 };
 
 const reportResponse: ReportResponse = {
