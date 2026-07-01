@@ -142,6 +142,11 @@ export default function HomeScreen() {
   // mp4 再生不可のブラウザでは <img> で WebP アニメをそのまま表示するフォールバック。
   const [useImgFallback, setUseImgFallback] = useState(false);
 
+  useEffect(() => {
+    setPhase(pet ? 'active' : 'naming');
+    if (pet) setCurrentAnim('hand');
+  }, [pet]);
+
   // 動画は再生(play)実行時に読み込まれる。iOS Safari は preload を無視し play 前は
   // loadeddata が発火しないため、ローディングで動画読み込みを待つと永久に解除されない
   // （読み込み→loadeddata→play→読み込み の循環デッドロック）。

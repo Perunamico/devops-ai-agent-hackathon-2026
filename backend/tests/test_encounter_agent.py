@@ -1,5 +1,6 @@
 import asyncio
-from unittest.mock import MagicMock
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -9,9 +10,100 @@ from app.agents.encounter_agent import EncounterAgent, _match_profiles_to_topics
 
 def make_agent():
     ai = MagicMock()
+    ai.generate_json.return_value = {
+        "common_topics": ["音楽"],
+        "related_topics": ["ライブ"],
+        "conversation_hooks": ["最近聴いてる曲ある？"],
+        "followup_suggestions": ["おすすめのアーティスト"],
+        "new_interest_candidates": ["レコード"],
+    }
     db = MagicMock()
-    token = MagicMock()
-    return EncounterAgent(ai, db, token), ai, db
+    token_svc = MagicMock()
+    return EncounterAgent(ai, db, token_svc), ai, db, token_svc
+
+
+# ---- token exchange ----
+
+def test_issue_token():
+    agent, _ai, db, token_svc = make_agent()
+    token_svc.generate_payload_raw.return_value = [1, 2, 3, 4]
+    token_svc.payload_to_token_key.return_value = "abc123"
+
+    result = agent.issue_token("user1")
+
+    assert result.payload_raw == [1, 2, 3, 4]
+    assert result.token_key == "abc123"
+    assert result.qr_url.endswith("/exchange?exchangeToken=abc123")
+    db.save_exchange_token.assert_called_once()
+
+
+def test_resolve_token_not_found():
+    agent, _ai, db, token_svc = make_agent()
+    token_svc.payload_to_token_key.return_value = "bad"
+    db.get_exchange_token.return_value = None
+
+    result = agent.resolve_token("user2", [1, 2, 3])
+
+    assert result.status == "not_found"
+
+
+def test_resolve_token_expired():
+    agent, _ai, db, token_svc = make_agent()
+    token_svc.payload_to_token_key.return_value = "abc"
+    db.get_exchange_token.return_value = {
+        "token_key": "abc",
+        "issued_by": "user1",
+        "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=60)).isoformat(),
+    }
+
+    result = agent.resolve_token("user2", [1, 2, 3])
+
+    assert result.status == "expired"
+
+
+def test_resolve_token_waits_until_reverse_match_exists():
+    agent, _ai, db, token_svc = make_agent()
+    token_svc.payload_to_token_key.return_value = "abc"
+    db.get_exchange_token.return_value = {
+        "token_key": "abc",
+        "issued_by": "user1",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+        "used": False,
+    }
+    db.find_reverse_match.return_value = None
+
+    result = agent.resolve_token("user2", [1, 2, 3])
+
+    assert result.status == "waiting"
+    assert result.pending_id
+    db.save_match_record.assert_called_once()
+
+
+def test_resolve_token_matches_when_reverse_match_exists():
+    agent, _ai, db, token_svc = make_agent()
+    token_svc.payload_to_token_key.side_effect = ["abc", "abc", "reverse"]
+    db.get_exchange_token.return_value = {
+        "token_key": "abc",
+        "issued_by": "user1",
+        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
+        "used": False,
+    }
+    db.find_reverse_match.return_value = {
+        "id": "reverse-record",
+        "payload_raw": [9, 8, 7],
+    }
+    db.create_exchange_session.return_value = "session1"
+    db._list.return_value = []
+
+    with patch("app.agents.encounter_agent.asyncio.get_event_loop") as get_event_loop:
+        result = agent.resolve_token("user2", [1, 2, 3])
+
+    assert result.status == "matched"
+    assert result.session_id == "session1"
+    db.create_exchange_session.assert_called_once()
+    db.mark_exchange_token_used.assert_any_call("abc")
+    db.mark_exchange_token_used.assert_any_call("reverse")
+    get_event_loop.return_value.call_soon.assert_called_once()
 
 
 # ---- _match_profiles_to_topics ----
@@ -19,8 +111,8 @@ def make_agent():
 def test_match_profiles_normalized_and_excludes_nonmatching():
     profiles = [
         {"topic": "鬼滅の刃"},
-        {"topic": "Coffee"},        # 大文字小文字を無視して "coffee" と一致
-        {"topic": "野球観戦"},        # common_topics に無い → 除外
+        {"topic": "Coffee"},
+        {"topic": "野球観戦"},
     ]
     matched = _match_profiles_to_topics(profiles, ["鬼滅の刃", "coffee"])
     topics = {p["topic"] for p in matched}
@@ -34,7 +126,7 @@ def test_match_profiles_empty_topics():
 # ---- _generate_personal ----
 
 def test_generate_personal_returns_message_and_only_matched_points():
-    agent, ai, db = make_agent()
+    agent, ai, db, _token_svc = make_agent()
     db.get_private_memory.return_value = {
         "profiles": [
             {"topic": "鬼滅の刃", "contents": [{"content": "煉獄さんが好き", "shareability": "private"}]},
@@ -50,27 +142,26 @@ def test_generate_personal_returns_message_and_only_matched_points():
 
     assert message == "2人とも『鬼滅の刃』が大好きなんだね！煉獄さんの話をしたら？"
     assert points == [{"topic": "鬼滅の刃", "point": "煉獄さんの生き様が刺さる"}]
-    # マッチしたトピックだけが LLM に渡っていること
     prompt_arg = ai.generate_json.call_args.args[0]
     assert "鬼滅の刃" in prompt_arg
     assert "秘密の山" not in prompt_arg
 
 
 def test_generate_personal_no_common_topics_skips_llm():
-    agent, ai, db = make_agent()
+    agent, ai, _db, _token_svc = make_agent()
     assert agent._generate_personal([], "userA") == ("", [])
     ai.generate_json.assert_not_called()
 
 
 def test_generate_personal_no_match_skips_llm():
-    agent, ai, db = make_agent()
+    agent, ai, db, _token_svc = make_agent()
     db.get_private_memory.return_value = {"profiles": [{"topic": "登山"}]}
     assert agent._generate_personal(["コーヒー"], "userA") == ("", [])
     ai.generate_json.assert_not_called()
 
 
 def test_generate_personal_returns_empty_on_error():
-    agent, ai, db = make_agent()
+    agent, ai, db, _token_svc = make_agent()
     db.get_private_memory.return_value = {"profiles": [{"topic": "鬼滅の刃"}]}
     ai.generate_json.side_effect = RuntimeError("LLM error")
     assert agent._generate_personal(["鬼滅の刃"], "userA") == ("", [])
@@ -79,11 +170,11 @@ def test_generate_personal_returns_empty_on_error():
 # ---- _intensity_hints ----
 
 def test_intensity_hints_only_shareable_topics():
-    agent, ai, db = make_agent()
+    agent, _ai, db, _token_svc = make_agent()
     db.get_private_memory.return_value = {
         "profiles": [
             {"topic": "鬼滅の刃", "intensity": "high", "preference": "like", "category_small": "作品"},
-            {"topic": "収入の話", "intensity": "high"},  # 共有可能でない → 除外
+            {"topic": "収入の話", "intensity": "high"},
         ]
     }
     hints = agent._intensity_hints("userA", {"shareable_interests": ["鬼滅の刃"]})
@@ -99,7 +190,7 @@ def _session(a="userA", b="userB"):
 
 
 def test_get_analysis_returns_only_callers_points():
-    agent, ai, db = make_agent()
+    agent, _ai, db, _token_svc = make_agent()
     db.get_exchange_session.return_value = _session()
     db.get_analysis_by_session.return_value = {
         "id": "an1",
@@ -117,7 +208,7 @@ def test_get_analysis_returns_only_callers_points():
 
 
 def test_get_analysis_forbids_non_participant():
-    agent, ai, db = make_agent()
+    agent, _ai, db, _token_svc = make_agent()
     db.get_exchange_session.return_value = _session()
     with pytest.raises(HTTPException) as exc:
         agent.get_analysis("s1", "intruder")
@@ -125,7 +216,7 @@ def test_get_analysis_forbids_non_participant():
 
 
 def test_get_analysis_404_when_analysis_missing():
-    agent, ai, db = make_agent()
+    agent, _ai, db, _token_svc = make_agent()
     db.get_exchange_session.return_value = _session()
     db.get_analysis_by_session.return_value = None
     with pytest.raises(HTTPException) as exc:
@@ -136,7 +227,7 @@ def test_get_analysis_404_when_analysis_missing():
 # ---- orchestration in _generate_common_message_async ----
 
 def test_generate_common_message_stores_per_user_message_and_points():
-    agent, ai, db = make_agent()
+    agent, ai, db, _token_svc = make_agent()
     db.get_public_memory.return_value = {"shareable_interests": ["鬼滅の刃"]}
     db.get_blocked_topics.return_value = []
     db.get_private_memory.return_value = {
@@ -144,7 +235,7 @@ def test_generate_common_message_stores_per_user_message_and_points():
     }
 
     def fake_generate(prompt, temperature=0.3):
-        if "お話をしたら" in prompt:  # per-user プロンプト（例文に含まれる）
+        if "お話をしたら" in prompt:
             return {
                 "message": "2人とも『鬼滅の刃』が大好きなんだね！話をしたら？",
                 "points": [{"topic": "鬼滅の刃", "point": "刺さる"}],
@@ -161,23 +252,22 @@ def test_generate_common_message_stores_per_user_message_and_points():
     assert saved["personal_points"]["userA"] == [{"topic": "鬼滅の刃", "point": "刺さる"}]
 
     session_update = db.update_exchange_session.call_args.args[1]
-    assert session_update["common_message"] == "2人とも鬼滅が好きなんだね！"  # shared fallback
+    assert session_update["common_message"] == "2人とも鬼滅が好きなんだね！"
     assert session_update["analysis_id"] == "an1"
-    # per-user メッセージが両者ぶん保存される
     assert set(session_update["common_message_by_user"].keys()) == {"userA", "userB"}
     assert "話をしたら？" in session_update["common_message_by_user"]["userA"]
 
 
-# ---- get_session per-user メッセージ選択 ----
+# ---- get_session per-user message selection ----
 
 def test_get_session_returns_per_user_message_with_fallback():
-    agent, ai, db = make_agent()
+    agent, _ai, db, _token_svc = make_agent()
     db.get_exchange_session.return_value = {
         "user_a_id": "userA",
         "user_b_id": "userB",
         "status": "active",
         "speaker_id": "userA",
-        "common_message": "2人とも鬼滅が好きなんだね！",  # shared fallback
+        "common_message": "2人とも鬼滅が好きなんだね！",
         "common_message_by_user": {"userA": "Aさん専用メッセージ"},
         "analysis_id": "an1",
     }
@@ -185,5 +275,5 @@ def test_get_session_returns_per_user_message_with_fallback():
     resp_a = agent.get_session("s1", "userA")
     resp_b = agent.get_session("s1", "userB")
 
-    assert resp_a.common_message == "Aさん専用メッセージ"          # 本人ぶん
-    assert resp_b.common_message == "2人とも鬼滅が好きなんだね！"  # 無いので共通にフォールバック
+    assert resp_a.common_message == "Aさん専用メッセージ"
+    assert resp_b.common_message == "2人とも鬼滅が好きなんだね！"

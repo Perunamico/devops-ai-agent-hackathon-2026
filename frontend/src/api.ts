@@ -40,6 +40,9 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 export const createPet = (body: PetCreate) =>
   apiFetch<PetResponse>('/pets', { method: 'POST', body: JSON.stringify(body) });
 
+export const getCurrentPet = () =>
+  apiFetch<PetResponse | null>('/pets/me');
+
 export const submitInput = (body: UserInputCreate) =>
   apiFetch<MemoryClassifyResult>('/inputs', { method: 'POST', body: JSON.stringify(body) });
 
