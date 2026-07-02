@@ -2,6 +2,66 @@
 
 Terraform で GCP 側の共通リソースを管理します。
 
+## まず見る場所
+
+| 用途 | 場所 |
+| --- | --- |
+| Terraform の入口 | `infra/main.tf` |
+| 変数の定義 | `infra/variables.tf` |
+| 実際の値 | `infra/terraform.tfvars` |
+| Cloud Run の定義 | `infra/modules/cloud_run/` |
+| Artifact Registry の定義 | `infra/modules/artifact_registry/` |
+| 出力される URL / サービス名 | `infra/outputs.tf` |
+
+## よく使うコマンド
+
+```bash
+cd infra
+
+# Terraform ファイルを整形
+terraform fmt -recursive
+
+# 構文と参照関係を検証
+terraform validate
+
+# 変更予定を確認
+terraform plan
+
+# 変更を適用
+terraform apply
+```
+
+本番・dev の Cloud Run URL を確認したい場合:
+
+```bash
+terraform output
+```
+
+## 変更フロー
+
+1. `infra/*.tf` または `infra/modules/**` を編集する
+2. `terraform fmt -recursive` を実行する
+3. `terraform validate` を実行する
+4. `terraform plan` で `destroy` がないことを確認する
+5. 問題なければ `terraform apply` する
+6. PR に `plan` / `apply` の結果を書く
+
+`terraform plan` で `destroy` が出た場合は、意図した削除でない限り `apply` しないでください。
+
+## GCP Console で見る場所
+
+Terraform が正しく反映されているかを画面で確認したい場合は、Google Cloud Console の以下を見ます。
+
+| リソース | Console |
+| --- | --- |
+| API サーバー | Cloud Run |
+| Docker image | Artifact Registry |
+| Gemini API key | Secret Manager |
+| 実行権限 | IAM |
+| 有効化 API | APIs & Services |
+
+基本的には Console で直接変更せず、Terraform ファイルを編集して `terraform plan` → `terraform apply` で反映します。Console で手動変更すると、次回 `terraform plan` に差分として表示されます。
+
 ## 管理対象
 
 - 必要な Google APIs
