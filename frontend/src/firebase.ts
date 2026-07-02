@@ -125,11 +125,28 @@ export async function signInWithEmail(email: string, password: string): Promise<
   await signInWithEmailAndPassword(auth, email, password);
 }
 
+// メールのリンクから戻ってきたときの continue URL。`?relogin=<mode>` を付けておき、
+// App 側でこのパラメータを検知したらキャッシュ済みセッションを破棄して必ずログインさせる
+// （リンクを開いたブラウザに別アカウントのセッションが残っていても本体へ進ませない）。
+function emailActionSettings(mode: 'verify' | 'reset') {
+  return { url: `${window.location.origin}/?relogin=${mode}` };
+}
+
+async function sendVerificationTo(user: User): Promise<void> {
+  try {
+    await sendEmailVerification(user, emailActionSettings('verify'));
+  } catch {
+    // continue URL のドメインが Firebase の承認済みドメイン外（プレビュー環境など）だと
+    // 失敗するため、その場合は設定なしで送る（強制再ログインは効かないがメールは届く）。
+    await sendEmailVerification(user);
+  }
+}
+
 export async function createAccountWithEmail(email: string, password: string): Promise<void> {
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
   const credential = await createUserWithEmailAndPassword(auth, email, password);
-  await sendEmailVerification(credential.user).catch((error) => {
+  await sendVerificationTo(credential.user).catch((error) => {
     console.warn('Email verification failed.', error);
   });
 }
@@ -138,7 +155,7 @@ export async function resendVerificationEmail(): Promise<void> {
   const auth = getConfiguredAuth();
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in.');
-  await sendEmailVerification(user);
+  await sendVerificationTo(user);
 }
 
 export async function reloadCurrentUser(): Promise<AuthState> {
@@ -168,7 +185,12 @@ export async function reloadCurrentUser(): Promise<AuthState> {
 export async function sendPasswordReset(email: string): Promise<void> {
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
-  await sendPasswordResetEmail(auth, email);
+  try {
+    await sendPasswordResetEmail(auth, email, emailActionSettings('reset'));
+  } catch {
+    // 承認済みドメイン外では continue URL なしで送る（sendVerificationTo と同じ理由）。
+    await sendPasswordResetEmail(auth, email);
+  }
 }
 
 export async function signOutUser(): Promise<void> {
