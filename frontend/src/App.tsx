@@ -157,6 +157,19 @@ function authErrorMessage(error: unknown): string {
 
 type AuthView = 'landing' | 'signin' | 'signup' | 'reset';
 
+// 確認/再設定メールの continue URL に付く ?relogin=verify|reset を読み取り、URL から除去する。
+// リロードや履歴共有で強制サインアウトが再発火しないよう、読み取りと同時に消す。
+function consumeReloginParam(): 'verify' | 'reset' | null {
+  if (typeof window === 'undefined') return null;
+  const url = new URL(window.location.href);
+  const mode = url.searchParams.get('relogin');
+  if (mode !== 'verify' && mode !== 'reset') return null;
+  url.searchParams.delete('relogin');
+  const query = url.searchParams.toString();
+  window.history.replaceState(null, '', url.pathname + (query ? `?${query}` : ''));
+  return mode;
+}
+
 function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-svh bg-white flex items-center justify-center px-5">
@@ -167,14 +180,14 @@ function AuthShell({ children }: { children: ReactNode }) {
   );
 }
 
-function AuthScreen() {
-  const [view, setView] = useState<AuthView>('landing');
+function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialView?: AuthView; initialNotice?: string } = {}) {
+  const [view, setView] = useState<AuthView>(initialView);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
+  const [notice, setNotice] = useState(initialNotice);
 
   function moveTo(nextView: AuthView) {
     setView(nextView);
@@ -505,37 +518,67 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     emailVerified: true,
   } : null);
   const [authLoading, setAuthLoading] = useState(!initialPet);
+  // メールのリンク経由（?relogin=verify|reset）で開いたときの案内文。
+  // 非 null の間は AuthScreen をログイン画面から開始する。
+  const [reloginNotice, setReloginNotice] = useState<string | null>(null);
   // サインインごとに一度だけ、未確認判定を出す前のサーバ再取得を行うためのフラグ。
   const verifyRecheckedRef = useRef(false);
 
   useEffect(() => {
     if (initialPet) return;
-    return subscribeAuthState((state) => {
-      if (state.signedIn && !state.emailVerified && !verifyRecheckedRef.current) {
-        // キャッシュされたユーザーの emailVerified は古いことがある（別セッション/前回訪問で
-        // 確認済みでも false のまま）。確認待ち画面を出す前に一度だけサーバから取り直す。
-        // 確認済みだった場合は reloadCurrentUser が ID トークンも強制更新する。
-        verifyRecheckedRef.current = true;
-        reloadCurrentUser()
-          .then((fresh) => setAuth(fresh))
-          .catch(() => setAuth(state))
-          .finally(() => setAuthLoading(false));
-        return;
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+
+    const start = async () => {
+      // 確認/再設定メールのリンク経由（?relogin=...）では、ブラウザにキャッシュされた
+      // セッション（別アカウントの可能性がある）を信用せず、必ずサインアウトして
+      // ログインからやり直させる。パラメータはリロードで再発火しないよう即座に消す。
+      const relogin = consumeReloginParam();
+      if (relogin) {
+        await signOutUser();
+        if (cancelled) return;
+        setReloginNotice(relogin === 'verify'
+          ? 'メールの確認ができたら、登録したメールアドレスでログインしてください。'
+          : 'パスワードを再設定したら、新しいパスワードでログインしてください。');
       }
-      setAuth(state);
-      setAuthLoading(false);
-      if (!state.signedIn) {
-        // 次のサインインでも未確認判定の取り直しが効くようにリセットする。
-        verifyRecheckedRef.current = false;
-        setPet(null);
-        setPetBubble(null);
-        setReviewCount(0);
-        setScreen('home');
-        // サインアウト時はラベル選択オンボーディングもリセットする。
-        setLabelsChosen(false);
-        setSelectedLabels([]);
-      }
-    });
+      if (cancelled) return;
+
+      unsubscribe = subscribeAuthState((state) => {
+        if (state.signedIn && !state.emailVerified && !verifyRecheckedRef.current) {
+          // キャッシュされたユーザーの emailVerified は古いことがある（別セッション/前回訪問で
+          // 確認済みでも false のまま）。確認待ち画面を出す前に一度だけサーバから取り直す。
+          // 確認済みだった場合は reloadCurrentUser が ID トークンも強制更新する。
+          verifyRecheckedRef.current = true;
+          reloadCurrentUser()
+            .then((fresh) => setAuth(fresh))
+            .catch(() => setAuth(state))
+            .finally(() => setAuthLoading(false));
+          return;
+        }
+        setAuth(state);
+        setAuthLoading(false);
+        if (state.signedIn) {
+          // ログインし直したら案内は役目を終える（次回の手動ログアウトで landing に戻す）。
+          setReloginNotice(null);
+        } else {
+          // 次のサインインでも未確認判定の取り直しが効くようにリセットする。
+          verifyRecheckedRef.current = false;
+          setPet(null);
+          setPetBubble(null);
+          setReviewCount(0);
+          setScreen('home');
+          // サインアウト時はラベル選択オンボーディングもリセットする。
+          setLabelsChosen(false);
+          setSelectedLabels([]);
+        }
+      });
+    };
+    void start();
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, [initialPet, setPetBubble]);
 
   useEffect(() => {
@@ -609,7 +652,16 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   }
 
   if (authLoading) return <AuthLoadingScreen />;
-  if (!initialPet && auth?.configured && !auth.signedIn) return <AuthScreen />;
+  if (!initialPet && auth?.configured && !auth.signedIn) {
+    // メールのリンク経由で来たときは LP を飛ばしてログイン画面から始める。
+    return (
+      <AuthScreen
+        key={reloginNotice ?? 'default'}
+        initialView={reloginNotice ? 'signin' : 'landing'}
+        initialNotice={reloginNotice ?? ''}
+      />
+    );
+  }
   if (!initialPet && auth?.configured && auth.signedIn && !auth.emailVerified) {
     return <EmailVerificationScreen auth={auth} onVerified={setAuth} />;
   }
