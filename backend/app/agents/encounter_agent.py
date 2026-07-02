@@ -200,12 +200,17 @@ class EncounterAgent:
         resolver_payload: list[int],
         reverse_record: dict,
     ) -> str:
-        speaker_id = random.choice([resolver_id, token_owner_id])
-        session_id = self._db.create_exchange_session({
-            "user_a_id": token_owner_id,
-            "user_b_id": resolver_id,
-            "speaker_id": speaker_id,
-        })
+        # このペアに既にアクティブなセッションがあれば再利用する（冪等化）。
+        # 同時照合による二重セッション生成を防ぎ、両側を同一セッションへ収束させる。
+        existing = self._db.find_active_session_by_pair(token_owner_id, resolver_id)
+        session_id = existing.get("id") if existing else None
+        if not session_id:
+            speaker_id = random.choice([resolver_id, token_owner_id])
+            session_id = self._db.create_exchange_session({
+                "user_a_id": token_owner_id,
+                "user_b_id": resolver_id,
+                "speaker_id": speaker_id,
+            })
 
         # 両トークンを使用済みにする
         resolver_token_key = self._token.payload_to_token_key(resolver_payload)
@@ -215,7 +220,7 @@ class EncounterAgent:
             owner_token_key = self._token.payload_to_token_key(reverse_payload)
             self._db.mark_exchange_token_used(owner_token_key)
 
-        # マッチ記録を更新
+        # マッチ記録を更新（get_match_status のフォールバックとしても機能）
         self._db.update_match_record(reverse_record.get("id", ""), {"session_id": session_id})
 
         # 最新の pending_id で自分のレコードを更新（find して update）
@@ -225,10 +230,11 @@ class EncounterAgent:
                 self._db.update_match_record(r.get("id", ""), {"session_id": session_id})
                 break
 
-        # LLM で共通メッセージを非同期生成
-        _run_background_coro(
-            self._generate_common_message_async(session_id, token_owner_id, resolver_id)
-        )
+        # LLM で共通メッセージを非同期生成（既存セッション再利用時は二重起動しない）
+        if not existing:
+            _run_background_coro(
+                self._generate_common_message_async(session_id, token_owner_id, resolver_id)
+            )
 
         return session_id
 
@@ -367,6 +373,13 @@ class EncounterAgent:
         if token_owner_id == user_id:
             return ResolveExchangeResponse(status="self")
 
+        # 音声ルートとの併用でも二重セッションを作らないよう、ペア単位で冪等化する。
+        existing = self._db.find_active_session_by_pair(token_owner_id, user_id)
+        if existing:
+            session_id = existing.get("id")
+            self._db.mark_exchange_token_used_with_session(token_key, session_id)
+            return ResolveExchangeResponse(status="matched", session_id=session_id)
+
         speaker_id = random.choice([user_id, token_owner_id])
         session_id = self._db.create_exchange_session({
             "user_a_id": token_owner_id,
@@ -387,7 +400,24 @@ class EncounterAgent:
         session_id = record.get("session_id")
         if session_id:
             return MatchStatusResponse(status="matched", session_id=session_id)
+        # レコードへの session_id 反映は重複レコードで取り違えが起き得るため、
+        # このペアにアクティブセッションが実在するかを正本として判定する。
+        session = self._db.find_active_session_by_pair(
+            record.get("resolver_id", ""), record.get("token_owner_id", "")
+        )
+        if session:
+            return MatchStatusResponse(status="matched", session_id=session.get("id"))
         return MatchStatusResponse(status="waiting")
+
+    def mark_ready(self, session_id: str, user_id: str) -> None:
+        """相互確認ゲート: 呼び出し本人が成功画面へ到達したことを記録する。"""
+        from fastapi import HTTPException
+        session = self._db.get_exchange_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        if user_id not in (session.get("user_a_id"), session.get("user_b_id")):
+            raise HTTPException(status_code=403, detail="Not a participant")
+        self._db.mark_session_ready(session_id, user_id)
 
     def get_session(self, session_id: str, user_id: str) -> SessionResponse:
         from fastapi import HTTPException
@@ -399,6 +429,9 @@ class EncounterAgent:
         # 交流中メッセージは本人ぶんを優先し、無ければ共通メッセージにフォールバックする。
         by_user = session.get("common_message_by_user") or {}
         common_message = by_user.get(user_id) or session.get("common_message")
+        # 双方が到達を通知したときだけ both_ready=True（片方だけの成功遷移を防ぐ）。
+        ready = set(session.get("ready_user_ids") or [])
+        both_ready = {session.get("user_a_id"), session.get("user_b_id")}.issubset(ready)
         return SessionResponse(
             session_id=session_id,
             status=session.get("status", "active"),
@@ -406,6 +439,7 @@ class EncounterAgent:
             common_message=common_message,
             analysis_id=session.get("analysis_id"),
             ended_by=session.get("ended_by"),
+            both_ready=both_ready,
         )
 
     def end_session(self, session_id: str, user_id: str) -> None:

@@ -101,6 +101,7 @@ function sessionResponse(sessionId: string): SessionResponse {
     speaker_id: 'peer-preview-1',
     common_message: 'ふたりとも「カフェ巡り」が好きみたい！話しかけてみよう☕',
     analysis_id: 'analysis-preview-1',
+    both_ready: true,
   };
 }
 

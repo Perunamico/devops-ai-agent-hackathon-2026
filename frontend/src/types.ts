@@ -122,6 +122,8 @@ export interface SessionResponse {
   common_message: string | null;
   analysis_id: string | null;
   ended_by?: string;
+  // 双方が成功画面へ到達したときだけ true。false の間は成功画面へ遷移しない。
+  both_ready: boolean;
 }
 
 // ---- Analysis / Report ----

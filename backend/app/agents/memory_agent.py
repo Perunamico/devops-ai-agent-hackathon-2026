@@ -338,6 +338,8 @@ class MemoryAgent:
                 "preference": "like",
                 "intensity": "high",
                 "origin": "label",
+                # 選んだだけで理由・中身は未確認。会話で深掘りできるまで「（未確認）」を出す。
+                "unconfirmed": True,
                 "contents": [{
                     "label": "reason",
                     "content": name,
@@ -451,6 +453,11 @@ def _merge_profiles_by_topic(existing: list[dict], new: list[dict]) -> list[dict
     for np in new:
         key = _topic_key(np)
         if key and key in index:
+            old = result[index[key]]
+            # ラベル由来トピックが会話で深掘りされ置換される時は、origin は保つが
+            # unconfirmed は引き継がない＝確認済みにする（「（未確認）」表示が外れる）。
+            if old.get("origin") == "label" and np.get("origin") != "label":
+                np = {**np, "origin": "label"}
             result[index[key]] = np
         else:
             result.append(np)

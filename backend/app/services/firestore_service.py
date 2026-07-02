@@ -257,6 +257,19 @@ class FirestoreService:
         public_memory = self.get_public_memory(user_id) or {}
         profiles = private_memory.get("profiles") or []
 
+        # 未確認（未深掘り）のラベルは、カード文言に「（未確認）」を添える。
+        # 会話で深掘りされると profile が置換され unconfirmed が外れてマークも消える。
+        unconfirmed_names = {
+            str(p.get("topic") or "").strip()
+            for p in profiles
+            if p.get("origin") == "label" and p.get("unconfirmed")
+        }
+        unconfirmed_names.discard("")
+
+        def mark(summary: str) -> str:
+            s = str(summary or "").strip()
+            return f"{s}（未確認）" if s in unconfirmed_names else summary
+
         # 公開カードのチップに出す「中身のカテゴリー(category_large)」の対応表。
         # いずれもメモリ保存エージェントが決めたカテゴリーを使う:
         #   - profiles 由来の要約 → そのプロフィールの category_large
@@ -274,7 +287,7 @@ class FirestoreService:
         for index, value in enumerate(public_memory.get("safe_summaries") or []):
             add_item(allowed, seen_allowed, {
                 "id": f"public-safe_summaries-{index}",
-                "summary": value,
+                "summary": mark(value),
                 "detail": "公開要約",
                 "source": "public",
                 "created_at": public_memory.get("updated_at", ""),
@@ -306,7 +319,7 @@ class FirestoreService:
                 shareability = content.get("shareability")
                 item = {
                     "id": _profile_content_id(profile_index, content_index),
-                    "summary": content.get("content") or topic,
+                    "summary": mark(content.get("content") or topic),
                     "detail": category or topic,
                     "source": "private",
                     "created_at": private_memory.get("updated_at", ""),
@@ -478,6 +491,8 @@ class FirestoreService:
         data.setdefault("ended_at", None)
         data.setdefault("common_message", None)
         data.setdefault("analysis_id", None)
+        # 相互確認ゲート用: 各ユーザーが「成功画面に到達した」ことを記録する。
+        data.setdefault("ready_user_ids", [])
         self._set("exchange_sessions", session_id, data)
         return session_id
 
@@ -487,6 +502,31 @@ class FirestoreService:
     def update_exchange_session(self, session_id: str, data: dict) -> None:
         existing = self._get("exchange_sessions", session_id) or {}
         self._set("exchange_sessions", session_id, {**existing, **data})
+
+    def find_active_session_by_pair(self, user_x: str, user_y: str) -> dict | None:
+        """このユーザーペアのアクティブなセッションを返す（冪等な get-or-create の土台）。
+
+        同時照合で複数生成されても両側が同一セッションへ収束するよう、created_at 昇順で
+        先頭1件を返す。_list は順序を保証しないため明示的にソートする。
+        """
+        pair = {user_x, user_y}
+        candidates = [
+            s for s in self._list("exchange_sessions")
+            if s.get("status") == "active"
+            and {s.get("user_a_id"), s.get("user_b_id")} == pair
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda s: s.get("created_at", ""))
+        return candidates[0]
+
+    def mark_session_ready(self, session_id: str, user_id: str) -> None:
+        """セッションの ready_user_ids に user_id を重複なく追加する。"""
+        existing = self._get("exchange_sessions", session_id) or {}
+        ready = list(existing.get("ready_user_ids") or [])
+        if user_id not in ready:
+            ready.append(user_id)
+            self._set("exchange_sessions", session_id, {**existing, "ready_user_ids": ready})
 
     # ---- (旧方式互換: 参加者管理) ----
 

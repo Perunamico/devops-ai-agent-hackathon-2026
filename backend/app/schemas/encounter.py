@@ -35,6 +35,8 @@ class SessionResponse(BaseModel):
     common_message: str | None = None
     analysis_id: str | None = None
     ended_by: str | None = None
+    # 双方が成功画面へ到達したときだけ True。フロントはこれが True になるまで遷移しない。
+    both_ready: bool = False
 
 
 class ReportCard(BaseModel):

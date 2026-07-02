@@ -99,6 +99,9 @@ export const scanQrToken = (tokenKey: string) =>
 export const getSession = (sessionId: string) =>
   apiFetch<SessionResponse>(`/exchanges/session/${sessionId}`);
 
+export const markSessionReady = (sessionId: string) =>
+  apiFetch<void>(`/exchanges/session/${sessionId}/ready`, { method: 'POST' });
+
 export const endSession = (sessionId: string) =>
   apiFetch<void>(`/exchanges/session/${sessionId}/end`, { method: 'POST' });
 
