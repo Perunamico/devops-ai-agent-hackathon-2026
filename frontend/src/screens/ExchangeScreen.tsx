@@ -4,6 +4,7 @@ import { useApp } from '../App';
 import { issueToken, resolveExchange, getMatchStatus, getSession, endSession, pollToken, scanQrToken } from '../api';
 import { createBroadcastExchange } from '../audio';
 import type { ExchangeTokenResponse, SessionResponse, ResolveStatus } from '../types';
+import styles from './ExchangeScreen.module.css';
 
 type ExchangeStep =
   | 'exchanging'     // 鳴き声送受信メイン
@@ -98,7 +99,7 @@ function createExchangeVideoPlayer(video: HTMLVideoElement): ExchangeAnimPlayer 
 }
 
 export default function ExchangeScreen() {
-  const { setScreen, setSessionId, setAnalysisId } = useApp();
+  const { setScreen, setSessionId, setAnalysisId, setInteractionActive } = useApp();
   const [step, setStep] = useState<ExchangeStep>('exchanging');
   const [errorKind, setErrorKind] = useState<ErrorKind>('generic');
   const [tokenData, setTokenData] = useState<ExchangeTokenResponse | null>(null);
@@ -128,6 +129,13 @@ export default function ExchangeScreen() {
   const [useExchangeImgFallback, setUseExchangeImgFallback] = useState(false);
   const exchangeVideoRefs = useRef<Partial<Record<ExchangeAnimName, HTMLVideoElement>>>({});
   const exchangePlayersRef = useRef<Partial<Record<ExchangeAnimName, ExchangeAnimPlayer>>>({});
+
+  // 交流成立中(session_active)のみ上部ホーム戻りバーを隠す（Issue #103）。
+  // 交流中に誤ってホームへ抜けるのを防ぐ。アンマウント時は必ず false に戻す。
+  useEffect(() => {
+    setInteractionActive(step === 'session_active');
+    return () => setInteractionActive(false);
+  }, [step, setInteractionActive]);
 
   // 交流探索フェーズ（鳴き声の送受信中）が終わったらマイクを確実にOFF。
   // resolving/waiting は受信後も双方成立まで鳴き続けるフェーズなので止めない。
@@ -654,9 +662,10 @@ export default function ExchangeScreen() {
   if (step === 'session_active') {
     const isEnded = sessionData?.status === 'ended' && sessionData?.ended_by !== undefined;
     return (
-      <div className="flex flex-col items-center min-h-[70vh] px-4 pt-6 gap-6">
-        {/* 交流中アニメーション（ロード完了後に遷移するためプレースホルダは不要）*/}
-        <div className="relative w-full flex-shrink-0" style={{ height: '280px' }}>
+      <div className={styles.screen}>
+        {/* 交流中アニメーション。動画は iPhone の横幅いっぱい（1024x1024 正方形）。
+            ロード完了後に遷移するためプレースホルダは不要。 */}
+        <div className={styles.video}>
           {useExchangeImgFallback
             ? /* mp4 非対応: img で WebP をそのまま表示 */
               (['interact_normal', 'interact_happy'] as ExchangeAnimName[]).map(name => (
@@ -664,15 +673,8 @@ export default function ExchangeScreen() {
                   key={name}
                   src={`/webp/${name}.webp`}
                   alt=""
-                  className="absolute"
-                  style={{
-                    opacity: name === currentExchangeAnim ? 1 : 0,
-                    height: '100%',
-                    width: 'auto',
-                    left: '50%',
-                    top: '50%',
-                    transform: 'translateX(-50%) translateY(-50%)',
-                  }}
+                  className={styles.videoLayer}
+                  style={{ opacity: name === currentExchangeAnim ? 1 : 0 }}
                 />
               ))
             : /* mp4 対応: 白背景 mp4 を <video> で再生（表示中のみ play） */
@@ -688,74 +690,59 @@ export default function ExchangeScreen() {
                   muted
                   playsInline
                   preload="auto"
-                  className="absolute"
-                  style={{
-                    opacity: exchangePlayersReady && name === currentExchangeAnim ? 1 : 0,
-                    height: '100%',
-                    width: 'auto',
-                    left: '50%',
-                    top: '50%',
-                    transform: 'translateX(-50%) translateY(-50%)',
-                  }}
+                  className={styles.videoLayer}
+                  style={{ opacity: exchangePlayersReady && name === currentExchangeAnim ? 1 : 0 }}
                 />
               ))
           }
         </div>
 
-        {isEnded ? (
-          <div className="bg-gray-50 rounded-2xl p-4 text-center">
-            <p className="text-gray-700">お相手がバイバイしました 👋</p>
-          </div>
-        ) : (
-          <>
-            {sessionData?.common_message ? (
-              <div className="bg-violet-50 rounded-2xl p-4 text-center space-y-2">
-                <p className="text-xs text-violet-500 font-medium">ペットからのメッセージ</p>
-                <p className="text-gray-800 text-base">
-                  「{sessionData.common_message}」
+        <div className={styles.body}>
+          {isEnded ? (
+            <>
+              <div className={styles.endedNotice}>
+                <p style={{ margin: 0 }}>
+                  お相手がバイバイしました
+                  <img src="/icons/baibai.png" alt="バイバイ" className={styles.baibaiInline} />
                 </p>
               </div>
-            ) : (
-              <div className="bg-violet-50 rounded-2xl p-4 text-center">
-                <p className="text-sm text-violet-600 animate-pulse">共通点を探しています...</p>
-              </div>
-            )}
+              {/* 交流終了後はホームへの導線が必要なため、画面内ボタンは残す（Issue #103 は上部バーのみ対象）。 */}
+              <button onClick={() => setScreen('home')} className={styles.homeButton}>
+                ホームに戻る
+              </button>
+            </>
+          ) : (
+            <>
+              {sessionData?.common_message ? (
+                <div className={styles.messageFrame}>
+                  <p className={styles.messageLabel}>ペットからのメッセージ</p>
+                  <p className={styles.messageText}>「{sessionData.common_message}」</p>
+                </div>
+              ) : (
+                <div className={styles.messageFrame}>
+                  <p className={styles.searching}>共通点を探しています...</p>
+                </div>
+              )}
 
-            <button
-              onClick={handleBye}
-              className="w-full bg-gradient-to-r from-pink-400 to-rose-500 text-white rounded-2xl py-4 font-bold text-lg"
-            >
-              バイバイする 👋
-            </button>
-          </>
-        )}
-
-        {isEnded && (
-          <button
-            onClick={() => setScreen('home')}
-            className="w-full bg-gray-200 text-gray-700 rounded-2xl py-3 font-medium"
-          >
-            ホームに戻る
-          </button>
-        )}
+              <button onClick={handleBye} className={styles.byeButton}>
+                バイバイする
+              </button>
+            </>
+          )}
+        </div>
       </div>
     );
   }
 
   if (step === 'session_ended') {
+    // ホームへの導線は上部のホーム戻りバーがあるため、画面内「ホームに戻る」ボタンは置かない。
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 gap-6 text-center">
-        <div className="text-5xl">👋</div>
-        <div className="space-y-2">
-          <h2 className="text-lg font-bold text-gray-900">交流が終わりました！</h2>
-          <p className="text-sm text-gray-500">また近くに来たら交流してみよう</p>
+      <div className={styles.endedScreen}>
+        <img src="/icons/baibai.png" alt="バイバイ" className={styles.baibaiHero} />
+        <div>
+          <h2 className={styles.endedTitle}>交流が終わりました！</h2>
+          <p className={styles.endedSub}>また近くに来たら交流してみよう</p>
         </div>
-        <button
-          onClick={() => setScreen('home')}
-          className="w-full bg-violet-600 text-white rounded-2xl py-4 font-bold text-lg"
-        >
-          ホームに戻る
-        </button>
       </div>
     );
   }
