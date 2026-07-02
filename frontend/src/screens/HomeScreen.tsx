@@ -27,8 +27,23 @@ const AVAILABLE_ANIMS: AnimName[] = [
 
 const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
 
+const CHAT_FILLERS = [
+  'んとね・・・',
+  'あとね、あとね！',
+  'そうなんだ、それじゃあ・・・',
+  'そうなんだ、おしゃべり楽しいな！じゃあ・・・',
+  'えへへ、考えてるよ・・・',
+  'ふむふむ、ちょっと待ってね・・・',
+  'わかった！えっとね・・・',
+  'うんうん、それでね・・・',
+] as const;
+
 function pickInterlude(): AnimName {
   return INTERLUDE_ANIMS[Math.floor(Math.random() * INTERLUDE_ANIMS.length)];
+}
+
+function pickChatFiller(): string {
+  return CHAT_FILLERS[Math.floor(Math.random() * CHAT_FILLERS.length)];
 }
 
 // --- <video>(白背景 mp4) ベースのアニメーション ---
@@ -225,6 +240,8 @@ export default function HomeScreen() {
     if (!message || submitting) return;
     // 送信の瞬間にランダムな interlude を1回再生してペットを反応させる（終了後 hand へ戻る）
     setCurrentAnim(pickInterlude());
+    // LLM の返答が届くまで、無言の待ち時間を避けるためルールベースの短いフィラーを表示する。
+    setPetBubble(pickChatFiller());
     setSubmitting(true);
     try {
       const result = await sendChat({ message });
