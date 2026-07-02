@@ -156,7 +156,7 @@ export default function ReviewScreen() {
     <div
       style={{
         minHeight: '100svh',
-        background: 'linear-gradient(180deg,#f2f5ff 0%,#ffffff 260px)',
+        background: '#ffffff',
         color: '#3f4d66',
         fontFamily: FONT,
       }}

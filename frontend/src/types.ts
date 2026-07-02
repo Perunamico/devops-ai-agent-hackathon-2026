@@ -22,6 +22,13 @@ export interface ChatRequest {
   message: string;
 }
 
+export interface SelectedLabel {
+  name: string;
+  category_large: string;
+  category_medium?: string;
+  category_small?: string;
+}
+
 export interface MemoryClassifyResult {
   category: 'private' | 'public' | 'blocked' | 'review_required';
   interests: string[];

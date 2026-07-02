@@ -182,3 +182,18 @@ class MemoryListResponse(BaseModel):
 
 class MemoryApproveRequest(BaseModel):
     action: Literal["approve", "reject"]
+
+
+class SelectedLabel(BaseModel):
+    name: str
+    category_large: str = "その他"
+    category_medium: str = ""
+    category_small: str = ""
+
+
+class SetLabelsRequest(BaseModel):
+    labels: list[SelectedLabel] = []
+
+
+class SelectedLabelsResponse(BaseModel):
+    labels: list[SelectedLabel] = []

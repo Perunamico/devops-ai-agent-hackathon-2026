@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApp } from '../App';
-import { sendChat, getReviewItems, createPet } from '../api';
+import { sendChat, getReviewItems, createPet, putSelectedLabels } from '../api';
 
 const NAME_MAX = 12;
 
@@ -126,7 +126,7 @@ declare global {
 
 
 export default function HomeScreen() {
-  const { pet, setPet, setHomeLoading, setNaming, setReviewCount, petBubble, setPetBubble } = useApp();
+  const { pet, setPet, setHomeLoading, setNaming, setReviewCount, petBubble, setPetBubble, selectedLabels } = useApp();
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [listening, setListening] = useState(false);
@@ -252,6 +252,10 @@ export default function HomeScreen() {
         personality: '元気で友好的',
         tone: '自然体でカジュアル',
       });
+      // 名付け前に選んだ「好きなもの」ラベルを登録する（失敗しても命名は続行。設定から再登録可能）。
+      if (selectedLabels.length > 0) {
+        putSelectedLabels(selectedLabels).catch(() => {});
+      }
       setPet(created);
       setContent('');
       setPetBubble(`おはよう！${created.name}だよ！`);
