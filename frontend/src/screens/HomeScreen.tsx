@@ -26,16 +26,13 @@ const AVAILABLE_ANIMS: AnimName[] = [
 ];
 
 const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
+const CHAT_FILLER_DELAY_MS = 700;
 
 const CHAT_FILLERS = [
   'んとね・・・',
-  'あとね、あとね！',
-  'そうなんだ、それじゃあ・・・',
-  'そうなんだ、おしゃべり楽しいな！じゃあ・・・',
-  'えへへ、考えてるよ・・・',
-  'ふむふむ、ちょっと待ってね・・・',
-  'わかった！えっとね・・・',
-  'うんうん、それでね・・・',
+  'えっと・・・',
+  'ちょっと待ってね・・・',
+  '考えてるよ・・・',
 ] as const;
 
 function pickInterlude(): AnimName {
@@ -146,6 +143,7 @@ export default function HomeScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const fillerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // pet が未作成なら命名モード。名付け完了後に 'active' へ移行する。
   const [phase, setPhase] = useState<'naming' | 'active'>(pet ? 'active' : 'naming');
@@ -198,6 +196,7 @@ export default function HomeScreen() {
   useEffect(() => {
     const players = playersRef.current;
     return () => {
+      if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
       Object.values(players).forEach((p) => p?.stop());
     };
   }, []);
@@ -240,17 +239,29 @@ export default function HomeScreen() {
     if (!message || submitting) return;
     // 送信の瞬間にランダムな interlude を1回再生してペットを反応させる（終了後 hand へ戻る）
     setCurrentAnim(pickInterlude());
-    // LLM の返答が届くまで、無言の待ち時間を避けるためルールベースの短いフィラーを表示する。
-    setPetBubble(pickChatFiller());
+    // LLM の返答が少し遅いときだけ、文脈に依存しない短いフィラーを出す。
+    if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
+    fillerTimerRef.current = setTimeout(() => {
+      setPetBubble(pickChatFiller());
+      fillerTimerRef.current = null;
+    }, CHAT_FILLER_DELAY_MS);
     setSubmitting(true);
     try {
       const result = await sendChat({ message });
+      if (fillerTimerRef.current) {
+        clearTimeout(fillerTimerRef.current);
+        fillerTimerRef.current = null;
+      }
       setPetBubble(result.reply);
       setContent('');
       if (result.memory?.category === 'review_required') {
         getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
       }
     } catch {
+      if (fillerTimerRef.current) {
+        clearTimeout(fillerTimerRef.current);
+        fillerTimerRef.current = null;
+      }
       setPetBubble('うまく聞き取れなかった...もう一度話しかけて！');
     } finally {
       setSubmitting(false);
