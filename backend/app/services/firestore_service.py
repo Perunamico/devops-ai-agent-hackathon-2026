@@ -1,6 +1,6 @@
 import uuid
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.config import Settings
@@ -47,8 +47,10 @@ class FirestoreService:
                 database=self._settings.firestore_database,
             )
         except Exception as e:
-            logger.warning("Firestore unavailable, using in-memory store: %s", e)
-            return None
+            raise RuntimeError(
+                "Firestore is enabled but the client could not be initialized. "
+                "Set FIRESTORE_ENABLED=false only for local/in-memory development."
+            ) from e
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -82,11 +84,83 @@ class FirestoreService:
         prefix = f"{collection}/"
         return [{"id": k[len(prefix):], **v} for k, v in self._mem.items() if k.startswith(prefix)]
 
+    def _query(
+        self,
+        collection: str,
+        filters: list[tuple[str, str, Any]],
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
+    ) -> list[dict]:
+        if self._db:
+            from google.cloud import firestore
+            from google.cloud.firestore_v1.base_query import FieldFilter
+
+            query = self._db.collection(collection)
+            for field, op, value in filters:
+                query = query.where(filter=FieldFilter(field, op, value))
+            if order_by:
+                direction = firestore.Query.DESCENDING if descending else firestore.Query.ASCENDING
+                query = query.order_by(order_by, direction=direction)
+            if limit:
+                query = query.limit(limit)
+            return [{**d.to_dict(), "id": d.id} for d in query.stream()]
+
+        items = self._list(collection)
+        for field, op, value in filters:
+            if op == "==":
+                items = [item for item in items if item.get(field) == value]
+            elif op == "array_contains":
+                items = [item for item in items if value in (item.get(field) or [])]
+            else:
+                raise ValueError(f"Unsupported in-memory query operator: {op}")
+        if order_by:
+            items.sort(key=lambda item: item.get(order_by, ""), reverse=descending)
+        if limit:
+            items = items[:limit]
+        return items
+
+    def _query_one(
+        self,
+        collection: str,
+        filters: list[tuple[str, str, Any]],
+        *,
+        order_by: str | None = None,
+        descending: bool = False,
+    ) -> dict | None:
+        items = self._query(
+            collection,
+            filters,
+            order_by=order_by,
+            descending=descending,
+            limit=1,
+        )
+        return items[0] if items else None
+
     def _delete(self, collection: str, doc_id: str) -> None:
         if self._db:
             self._db.collection(collection).document(doc_id).delete()
         else:
             self._mem.pop(f"{collection}/{doc_id}", None)
+
+    def _parse_datetime(self, value: Any) -> datetime | None:
+        if isinstance(value, datetime):
+            dt = value
+        elif isinstance(value, str):
+            try:
+                dt = datetime.fromisoformat(value)
+            except ValueError:
+                return None
+        else:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    def _is_unexpired(self, item: dict) -> bool:
+        expires_at = self._parse_datetime(item.get("expires_at"))
+        return expires_at is None or self._now() <= expires_at
 
     # ---- users ----
 
@@ -434,6 +508,9 @@ class FirestoreService:
 
     def save_exchange_token(self, token_key: str, data: dict) -> None:
         """data には payload_raw, token_key, issued_by, expires_at, used を含む"""
+        expires_at = self._parse_datetime(data.get("expires_at"))
+        if expires_at:
+            data.setdefault("ttl_at", expires_at)
         self._set("exchange_tokens", token_key, data)
 
     def get_exchange_token(self, token_key: str) -> dict | None:
@@ -456,6 +533,11 @@ class FirestoreService:
         """resolver_id, token_owner_id, payload_raw, recorded_at, pending_id, session_id=None"""
         record_id = str(uuid.uuid4())
         data["id"] = record_id
+        recorded_at = self._parse_datetime(data.get("recorded_at")) or self._now()
+        expires_at = self._parse_datetime(data.get("expires_at")) or recorded_at + timedelta(minutes=10)
+        data.setdefault("recorded_at", recorded_at.isoformat())
+        data.setdefault("expires_at", expires_at.isoformat())
+        data.setdefault("ttl_at", expires_at)
         self._set("exchange_match_records", record_id, data)
         return record_id
 
@@ -468,17 +550,22 @@ class FirestoreService:
 
     def find_reverse_match(self, resolver_id: str, token_owner_id: str) -> dict | None:
         """token_owner_id が resolver_id のトークンを照合済みかチェック"""
-        records = self._list("exchange_match_records")
-        for r in records:
-            if r.get("resolver_id") == token_owner_id and r.get("token_owner_id") == resolver_id:
-                return r
-        return None
+        records = self._query(
+            "exchange_match_records",
+            [
+                ("resolver_id", "==", token_owner_id),
+                ("token_owner_id", "==", resolver_id),
+            ],
+            order_by="recorded_at",
+            descending=True,
+            limit=10,
+        )
+        return next((r for r in records if self._is_unexpired(r)), None)
 
     def find_pending_match_by_pending_id(self, pending_id: str) -> dict | None:
-        records = self._list("exchange_match_records")
-        for r in records:
-            if r.get("pending_id") == pending_id:
-                return r
+        record = self._query_one("exchange_match_records", [("pending_id", "==", pending_id)])
+        if record and self._is_unexpired(record):
+            return record
         return None
 
     # ---- exchange sessions (新方式) ----
@@ -488,6 +575,7 @@ class FirestoreService:
         data["id"] = session_id
         data.setdefault("status", "active")
         data.setdefault("created_at", self._now().isoformat())
+        data.setdefault("participant_ids", [data.get("user_a_id"), data.get("user_b_id")])
         data.setdefault("ended_at", None)
         data.setdefault("common_message", None)
         data.setdefault("analysis_id", None)
@@ -510,11 +598,26 @@ class FirestoreService:
         先頭1件を返す。_list は順序を保証しないため明示的にソートする。
         """
         pair = {user_x, user_y}
-        candidates = [
-            s for s in self._list("exchange_sessions")
-            if s.get("status") == "active"
-            and {s.get("user_a_id"), s.get("user_b_id")} == pair
-        ]
+        candidates = []
+        candidates.extend(self._query(
+            "exchange_sessions",
+            [
+                ("status", "==", "active"),
+                ("user_a_id", "==", user_x),
+                ("user_b_id", "==", user_y),
+            ],
+            order_by="created_at",
+        ))
+        candidates.extend(self._query(
+            "exchange_sessions",
+            [
+                ("status", "==", "active"),
+                ("user_a_id", "==", user_y),
+                ("user_b_id", "==", user_x),
+            ],
+            order_by="created_at",
+        ))
+        candidates = [s for s in candidates if {s.get("user_a_id"), s.get("user_b_id")} == pair]
         if not candidates:
             return None
         candidates.sort(key=lambda s: s.get("created_at", ""))
@@ -570,10 +673,18 @@ class FirestoreService:
         作られないため、セッションに載っている相手 = 交流に成功した相手。
         相手ごとに最新セッションを採用し、共通の話題はその交流の分析結果から取る。
         """
-        sessions = [
-            s for s in self._list("exchange_sessions")
-            if user_id in (s.get("user_a_id"), s.get("user_b_id"))
-        ]
+        sessions = self._query(
+            "exchange_sessions",
+            [("user_a_id", "==", user_id)],
+            order_by="created_at",
+            descending=True,
+        )
+        sessions.extend(self._query(
+            "exchange_sessions",
+            [("user_b_id", "==", user_id)],
+            order_by="created_at",
+            descending=True,
+        ))
         sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
 
         friends: list[dict] = []

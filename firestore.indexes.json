@@ -1,0 +1,40 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "exchange_match_records",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "resolver_id", "order": "ASCENDING" },
+        { "fieldPath": "token_owner_id", "order": "ASCENDING" },
+        { "fieldPath": "recorded_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exchange_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "user_a_id", "order": "ASCENDING" },
+        { "fieldPath": "user_b_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exchange_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_a_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "exchange_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "user_b_id", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
