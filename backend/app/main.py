@@ -115,6 +115,28 @@ def _encounter(
     return EncounterAgent(ai, db, token_svc)
 
 
+def _get_authorized_analysis(
+    analysis_id: str,
+    uid: str,
+    db: FirestoreService,
+) -> dict:
+    analysis = db.get_exchange_analysis(analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+    session_id = analysis.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = db.get_exchange_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if uid not in (session.get("user_a_id"), session.get("user_b_id")):
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    return analysis
+
+
 # ---- Routes ----
 
 @app.get("/health")
@@ -415,9 +437,7 @@ def get_report(
     db: FirestoreService = Depends(get_firestore),
     ai: VertexAIService = Depends(get_vertex_ai),
 ):
-    analysis = db.get_exchange_analysis(analysis_id)
-    if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+    analysis = _get_authorized_analysis(analysis_id, uid, db)
 
     # personal_points は本人専用。レポート生成 LLM の文脈に相手のぶんを混ぜない。
     analysis = {k: v for k, v in analysis.items() if k != "personal_points"}
@@ -438,6 +458,7 @@ def submit_feedback(
     db: FirestoreService = Depends(get_firestore),
     ai: VertexAIService = Depends(get_vertex_ai),
 ):
+    _get_authorized_analysis(analysis_id, uid, db)
     db.save_card_feedback(analysis_id, body.card_id, body.reaction)
 
     reactions = [{"card_id": body.card_id, "reaction": body.reaction}]

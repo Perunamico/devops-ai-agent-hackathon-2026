@@ -447,6 +447,8 @@ class EncounterAgent:
         session = self._db.get_exchange_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+        if user_id not in (session.get("user_a_id"), session.get("user_b_id")):
+            raise HTTPException(status_code=403, detail="Not a participant")
         self._db.update_exchange_session(session_id, {
             "status": "ended",
             "ended_at": datetime.now(timezone.utc).isoformat(),
