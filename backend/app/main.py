@@ -12,6 +12,8 @@ from app.config import Settings, get_settings
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.encounter import (
     ExchangeTokenResponse,
+    FriendItem,
+    FriendsResponse,
     ResolveExchangeRequest,
     ResolveExchangeResponse,
     MatchStatusResponse,
@@ -33,7 +35,7 @@ from app.schemas.memory import (
 )
 from app.schemas.pet import PetCreate, PetResponse, UserInputCreate
 from app.services.firestore_service import FirestoreService
-from app.services.token_service import TokenService
+from app.services.token_service import EmailNotVerifiedError, TokenService
 from app.services.vertex_ai_service import VertexAIService
 
 logging.basicConfig(level=logging.INFO)
@@ -99,6 +101,8 @@ async def require_auth(
     id_token = authorization.removeprefix("Bearer ").strip()
     try:
         return token_svc.verify_firebase_token(id_token)
+    except EmailNotVerifiedError:
+        raise HTTPException(status_code=403, detail="Email not verified")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -109,6 +113,28 @@ def _encounter(
     token_svc: TokenService = Depends(get_token_service_dep),
 ) -> EncounterAgent:
     return EncounterAgent(ai, db, token_svc)
+
+
+def _get_authorized_analysis(
+    analysis_id: str,
+    uid: str,
+    db: FirestoreService,
+) -> dict:
+    analysis = db.get_exchange_analysis(analysis_id)
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+    session_id = analysis.get("session_id")
+    if not session_id:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    session = db.get_exchange_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if uid not in (session.get("user_a_id"), session.get("user_b_id")):
+        raise HTTPException(status_code=403, detail="Not a participant")
+
+    return analysis
 
 
 # ---- Routes ----
@@ -377,6 +403,22 @@ def end_session(
     return {"session_id": session_id, "status": "ended"}
 
 
+# ---- friends（交流が成立した相手の一覧）----
+
+@app.get("/friends", response_model=FriendsResponse)
+def get_friends(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    data = db.get_friends_overview(uid)
+    return FriendsResponse(
+        friends=[FriendItem(**f) for f in data["friends"]],
+        friend_count=data["friend_count"],
+        common_topic_count=data["common_topic_count"],
+        last_interaction_at=data["last_interaction_at"],
+    )
+
+
 # ---- analysis / reports（旧 AnalysisScreen 互換）----
 
 @app.get("/exchanges/{session_id}/analysis", response_model=ExchangeAnalysisResponse)
@@ -395,9 +437,7 @@ def get_report(
     db: FirestoreService = Depends(get_firestore),
     ai: VertexAIService = Depends(get_vertex_ai),
 ):
-    analysis = db.get_exchange_analysis(analysis_id)
-    if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+    analysis = _get_authorized_analysis(analysis_id, uid, db)
 
     # personal_points は本人専用。レポート生成 LLM の文脈に相手のぶんを混ぜない。
     analysis = {k: v for k, v in analysis.items() if k != "personal_points"}
@@ -418,6 +458,7 @@ def submit_feedback(
     db: FirestoreService = Depends(get_firestore),
     ai: VertexAIService = Depends(get_vertex_ai),
 ):
+    _get_authorized_analysis(analysis_id, uid, db)
     db.save_card_feedback(analysis_id, body.card_id, body.reaction)
 
     reactions = [{"card_id": body.card_id, "reaction": body.reaction}]

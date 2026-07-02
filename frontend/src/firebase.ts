@@ -1,11 +1,16 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
+  browserSessionPersistence,
   createUserWithEmailAndPassword,
   getAuth,
+  initializeAuth,
   onAuthStateChanged,
+  reload,
+  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  type Auth,
   type User,
 } from 'firebase/auth';
 
@@ -25,14 +30,8 @@ const isConfigured = Boolean(
 );
 
 export async function getFirebaseIdToken(): Promise<string | null> {
-  if (typeof window === 'undefined' || !isConfigured) {
-    return null;
-  }
-
   try {
-    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const user = auth.currentUser;
+    const user = getConfiguredAuth()?.currentUser;
     if (!user) return null;
     return user.getIdToken();
   } catch (error) {
@@ -51,40 +50,43 @@ export interface AuthState {
   /** 匿名認証かどうか */
   isAnonymous: boolean;
   email: string | null;
+  emailVerified: boolean;
 }
 
 export async function getAuthState(): Promise<AuthState> {
-  if (typeof window === 'undefined' || !isConfigured) {
-    return {
-      configured: false,
-      signedIn: false,
-      uid: null,
-      isAnonymous: false,
-      email: null,
-    };
-  }
-
   try {
-    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const user = auth.currentUser;
-    return authStateFromUser(user);
+    const auth = getConfiguredAuth();
+    return authStateFromUser(auth?.currentUser ?? null);
   } catch (error) {
     console.warn('Failed to resolve auth state.', error);
     return {
-      configured: true,
+      configured: isConfigured,
       signedIn: false,
       uid: null,
       isAnonymous: false,
       email: null,
+      emailVerified: false,
     };
   }
 }
 
-function getConfiguredAuth() {
+let _auth: Auth | null = null;
+
+function getConfiguredAuth(): Auth | null {
   if (typeof window === 'undefined' || !isConfigured) return null;
+  if (_auth) return _auth;
   const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  return getAuth(app);
+  try {
+    // セッション永続化: ログイン状態はタブを閉じるまで（sessionStorage 相当）。
+    // URL を開き直したとき・ブラウザを閉じて再訪したときは必ずログインから始まり、
+    // 過去の訪問で IndexedDB に残った古いセッションも復元しない。
+    // （同じタブ内のリロード・画面遷移ではログインが維持される）
+    _auth = initializeAuth(app, { persistence: browserSessionPersistence });
+  } catch {
+    // 既に初期化済み（HMR 等で二重初期化した場合）は既存インスタンスを使う。
+    _auth = getAuth(app);
+  }
+  return _auth;
 }
 
 function authStateFromUser(user: User | null): AuthState {
@@ -94,6 +96,7 @@ function authStateFromUser(user: User | null): AuthState {
     uid: user?.uid ?? null,
     isAnonymous: user?.isAnonymous ?? false,
     email: user?.email ?? null,
+    emailVerified: user?.emailVerified ?? false,
   };
 }
 
@@ -106,6 +109,7 @@ export function subscribeAuthState(callback: (state: AuthState) => void): () => 
       uid: null,
       isAnonymous: false,
       email: null,
+      emailVerified: false,
     });
     return () => {};
   }
@@ -118,24 +122,78 @@ export async function signInWithEmail(email: string, password: string): Promise<
   await signInWithEmailAndPassword(auth, email, password);
 }
 
+// メールのリンクから戻ってきたときの continue URL。`?relogin=<mode>` を付けておき、
+// App 側でこのパラメータを検知したらキャッシュ済みセッションを破棄して必ずログインさせる
+// （リンクを開いたブラウザに別アカウントのセッションが残っていても本体へ進ませない）。
+function emailActionSettings(mode: 'verify' | 'reset') {
+  return { url: `${window.location.origin}/?relogin=${mode}` };
+}
+
+async function sendVerificationTo(user: User): Promise<void> {
+  try {
+    await sendEmailVerification(user, emailActionSettings('verify'));
+  } catch {
+    // continue URL のドメインが Firebase の承認済みドメイン外（プレビュー環境など）だと
+    // 失敗するため、その場合は設定なしで送る（強制再ログインは効かないがメールは届く）。
+    await sendEmailVerification(user);
+  }
+}
+
 export async function createAccountWithEmail(email: string, password: string): Promise<void> {
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
-  await createUserWithEmailAndPassword(auth, email, password);
+  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  await sendVerificationTo(credential.user).catch((error) => {
+    console.warn('Email verification failed.', error);
+  });
+}
+
+export async function resendVerificationEmail(): Promise<void> {
+  const auth = getConfiguredAuth();
+  const user = auth?.currentUser;
+  if (!user) throw new Error('Not signed in.');
+  await sendVerificationTo(user);
+}
+
+export async function reloadCurrentUser(): Promise<AuthState> {
+  const auth = getConfiguredAuth();
+  const user = auth?.currentUser;
+  if (!user) {
+    return {
+      configured: isConfigured,
+      signedIn: false,
+      uid: null,
+      isAnonymous: false,
+      email: null,
+      emailVerified: false,
+    };
+  }
+  await reload(user);
+  const fresh = auth.currentUser;
+  // ID トークンには発行時点の email_verified が焼き込まれている。確認済みになったら
+  // トークンを強制更新しないと、バックエンドが古いトークンを 403 で弾き続けて
+  // ペット作成（名付け）から先に進めなくなる。
+  if (fresh?.emailVerified) {
+    await fresh.getIdToken(true).catch(() => null);
+  }
+  return authStateFromUser(fresh);
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
-  await sendPasswordResetEmail(auth, email);
+  try {
+    await sendPasswordResetEmail(auth, email, emailActionSettings('reset'));
+  } catch {
+    // 承認済みドメイン外では continue URL なしで送る（sendVerificationTo と同じ理由）。
+    await sendPasswordResetEmail(auth, email);
+  }
 }
 
 export async function signOutUser(): Promise<void> {
-  if (typeof window === 'undefined' || !isConfigured) return;
-
   try {
-    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
+    const auth = getConfiguredAuth();
+    if (!auth) return;
     await signOut(auth);
   } catch (error) {
     console.warn('Sign-out failed.', error);

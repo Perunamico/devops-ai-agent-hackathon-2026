@@ -300,3 +300,25 @@ def test_get_session_returns_per_user_message_with_fallback():
 
     assert resp_a.common_message == "Aさん専用メッセージ"
     assert resp_b.common_message == "2人とも鬼滅が好きなんだね！"
+
+
+def test_end_session_forbids_non_participant():
+    agent, _ai, db, _token_svc = make_agent()
+    db.get_exchange_session.return_value = _session()
+
+    with pytest.raises(HTTPException) as exc:
+        agent.end_session("s1", "intruder")
+
+    assert exc.value.status_code == 403
+    db.update_exchange_session.assert_not_called()
+
+
+def test_end_session_allows_participant():
+    agent, _ai, db, _token_svc = make_agent()
+    db.get_exchange_session.return_value = _session()
+
+    agent.end_session("s1", "userA")
+
+    db.update_exchange_session.assert_called_once()
+    assert db.update_exchange_session.call_args.args[0] == "s1"
+    assert db.update_exchange_session.call_args.args[1]["status"] == "ended"
