@@ -155,7 +155,14 @@ export async function reloadCurrentUser(): Promise<AuthState> {
     };
   }
   await reload(user);
-  return authStateFromUser(auth.currentUser);
+  const fresh = auth.currentUser;
+  // ID トークンには発行時点の email_verified が焼き込まれている。確認済みになったら
+  // トークンを強制更新しないと、バックエンドが古いトークンを 403 で弾き続けて
+  // ペット作成（名付け）から先に進めなくなる。
+  if (fresh?.emailVerified) {
+    await fresh.getIdToken(true).catch(() => null);
+  }
+  return authStateFromUser(fresh);
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {
