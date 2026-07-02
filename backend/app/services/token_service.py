@@ -17,6 +17,10 @@ TOKEN_EXPIRE_SECONDS = 60
 _HEX_CHARS = "0123456789ABC"
 
 
+class EmailNotVerifiedError(Exception):
+    """メール確認が完了していないユーザーの ID トークン"""
+
+
 class TokenService:
     def __init__(self, settings: Settings):
         self._settings = settings
@@ -40,6 +44,11 @@ class TokenService:
         self._ensure_firebase()
         from firebase_admin import auth
         decoded = auth.verify_id_token(id_token)
+        # メール/パスワード登録ユーザーはメール確認済みのみ許可する。
+        # フロントの確認待ち画面だけでは、未確認ユーザーが API を直接叩けてしまう。
+        provider = decoded.get("firebase", {}).get("sign_in_provider")
+        if provider == "password" and not decoded.get("email_verified", False):
+            raise EmailNotVerifiedError("email not verified")
         return decoded["uid"]
 
     def generate_payload_raw(self) -> list[int]:

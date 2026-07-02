@@ -227,11 +227,13 @@ function AuthScreen() {
       <AuthShell>
         <div className="space-y-8">
           <div className="space-y-3 text-center">
-            <img src="/icons/home.png" className="w-20 h-20 mx-auto object-contain" alt="" />
+            {/* ホームのペット映像と同じ素材を使い、アプリ本体と第一印象を揃える */}
+            <video src="/movie/normal.mp4" className="landing-pet mx-auto" autoPlay loop muted playsInline />
             <div className="space-y-2">
-              <h1 className="text-2xl font-bold text-gray-900">AI Pet</h1>
+              <h1 className="landing-title">AI Pet</h1>
               <p className="text-sm text-gray-500 leading-relaxed">
-                ペットと話して、好きなことや思い出を少しずつ育てます。
+                話しかけると、あなたの好きなことをおぼえて育つペット。
+                ペットどうしの交流で、相手との共通点も見つかります。
               </p>
             </div>
           </div>
