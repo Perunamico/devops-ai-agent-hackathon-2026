@@ -129,7 +129,24 @@ function TopNav() {
           <div className="relative">
             <img src={item.iconImg} className="w-8 h-8 object-contain" alt={item.label} />
             {item.screen === 'review' && reviewCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              <span
+                style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  minWidth: 16,
+                  height: 16,
+                  padding: '0 2px',
+                  borderRadius: 9999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: '#fff',
+                  background: '#4670e6',
+                }}
+              >
                 {reviewCount}
               </span>
             )}
