@@ -509,6 +509,8 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   const [interactionActive, setInteractionActive] = useState(false);
   // 名付け前のラベル選択が済んだか。pet が未作成のとき、まずラベル選択を出す。
   const [labelsChosen, setLabelsChosen] = useState(initialPet !== null);
+  // 既存ペットの有無を確認し終えるまで、名付け前オンボーディングを出さない。
+  const [petResolved, setPetResolved] = useState(initialPet !== null);
   const [auth, setAuth] = useState<AuthState | null>(initialPet ? {
     configured: false,
     signedIn: true,
@@ -565,6 +567,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
           verifyRecheckedRef.current = false;
           setPet(null);
           setPetBubble(null);
+          setPetResolved(false);
           setReviewCount(0);
           setScreen('home');
           // サインアウト時はラベル選択オンボーディングもリセットする。
@@ -584,6 +587,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   useEffect(() => {
     if (initialPet || !auth || !auth.configured || !auth.signedIn || !auth.emailVerified) return;
     let cancelled = false;
+    setPetResolved(false);
     setHomeLoading(true);
     getCurrentPet()
       .then((currentPet) => {
@@ -595,7 +599,10 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
         if (!cancelled) setPet(null);
       })
       .finally(() => {
-        if (!cancelled) setHomeLoading(false);
+        if (!cancelled) {
+          setPetResolved(true);
+          setHomeLoading(false);
+        }
       });
     return () => {
       cancelled = true;
@@ -635,8 +642,9 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
 
   // 名付け前のオンボーディング: 好きなものラベルの選択。pet 未作成かつ未選択のとき表示する。
   // QRトークンから来た交流フローは対象外（そのまま exchange へ）。
-  // homeLoading 中（既存ペット取得中）は判定を保留し、オンボーディングのちらつきを防ぐ。
-  const showLabelOnboarding = pet === null && !labelsChosen && !hasQrToken && !homeLoading;
+  // 既存ペット取得前は判定を保留し、オンボーディングのちらつきを防ぐ。
+  const shouldWaitForPet = Boolean(!initialPet && auth?.configured && auth.signedIn && auth.emailVerified && !petResolved);
+  const showLabelOnboarding = petResolved && pet === null && !labelsChosen && !hasQrToken && !homeLoading;
 
   function renderScreen() {
     switch (screen) {
@@ -665,6 +673,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   if (!initialPet && auth?.configured && auth.signedIn && !auth.emailVerified) {
     return <EmailVerificationScreen auth={auth} onVerified={setAuth} />;
   }
+  if (shouldWaitForPet) return <AuthLoadingScreen />;
   if (showLabelOnboarding) {
     return (
       <AppContext.Provider value={ctx}>
