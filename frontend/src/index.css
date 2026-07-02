@@ -331,6 +331,14 @@ body {
   /* video 化で白背景の不透明矩形になるため、音波/音符を確実に前面へ出す基準にする */
   z-index: 1;
 }
+/* 交流失敗ポップの暗幕(bg-black/40)は <video> のハードウェアオーバーレイ合成には
+   効かないことがある（issue #108）。ポップ表示中は video/img 自身を直接減光し、
+   暗幕越しに背景が暗く見える他要素と体験を揃える。
+   brightness(0.6) は black/40 のアルファブレンド(元色*0.6)に近似させた値。 */
+.bark-img-dimmed {
+  filter: brightness(0.6);
+  transition: filter 0.15s ease;
+}
 .bark-pet {
   position: absolute;
   left: 50%;

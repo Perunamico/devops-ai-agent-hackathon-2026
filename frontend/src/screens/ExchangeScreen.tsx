@@ -523,6 +523,9 @@ export default function ExchangeScreen() {
   // ---- UI ----
 
   if (step === 'exchanging' || step === 'failed' || step === 'resolving' || step === 'waiting') {
+    // 交流失敗ポップの表示条件。暗幕(bg-black/40)が <video> のハードウェアオーバーレイ
+    // 合成には効かないことがあるため、この条件を video 自身の減光条件とも共有する。
+    const showFailedPopup = step === 'failed' && !showQR;
     return (
       <div
         className="flex flex-col bg-white exchange-fixed z-40"
@@ -542,7 +545,11 @@ export default function ExchangeScreen() {
             映像は白背景 mp4 を <video> で再生し、mp4 非対応時のみ WebP <img> にフォールバック。 */}
         <div className="flex-1 min-h-0 relative overflow-visible">
           {useExchangeImgFallback ? (
-            <img src="/webp/hand.webp" alt="" className="bark-img" />
+            <img
+              src="/webp/hand.webp"
+              alt=""
+              className={`bark-img${showFailedPopup ? ' bark-img-dimmed' : ''}`}
+            />
           ) : (
             <video
               ref={el => { if (el) el.muted = true; }}
@@ -552,7 +559,7 @@ export default function ExchangeScreen() {
               autoPlay
               loop
               preload="auto"
-              className="bark-img"
+              className={`bark-img${showFailedPopup ? ' bark-img-dimmed' : ''}`}
             />
           )}
           {barking && (
@@ -665,8 +672,11 @@ export default function ExchangeScreen() {
         {/* 交流失敗ポップ: will-change:transform で GPU レイヤーに昇格し video の上に合成。
             .exchange-fixed(z-40) がスタッキングコンテキストを作るため、内側の z-50 は
             TopNav(.side-nav, z-50) に外側から勝てない（issue #108）。document.body へ
-            Portal することでこの制約を回避し、暗幕を確実に最前面へ出す。 */}
-        {step === 'failed' && !showQR && createPortal(
+            Portal することでこの制約を回避し、暗幕を確実に最前面へ出す。
+            ただし video はブラウザのハードウェアビデオオーバーレイ合成により、この暗幕の
+            アルファブレンドが効かず明るいまま透けて見えることがあるため、
+            showFailedPopup 中は .bark-img-dimmed で video/img 自身を直接減光する。 */}
+        {showFailedPopup && createPortal(
           <div
             className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40"
             style={{ willChange: 'transform' }}
