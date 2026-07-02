@@ -114,6 +114,28 @@ firebase deploy --only hosting,firestore:rules --project $PROJECT_ID
 
 `firebase.json` では `/api/**` を Cloud Run の `ai-pet-api` にリライトし、それ以外は Next.js の static export を SPA として `index.html` に返します。
 
+Firestore の複合インデックスも一緒にデプロイします。
+
+```bash
+firebase deploy --only firestore:indexes --project $PROJECT_ID
+```
+
+交流用の一時データは `ttl_at` フィールドを持ちます。Firestore TTL は Console または `gcloud` で有効化します。
+
+```bash
+gcloud firestore fields ttls update ttl_at \
+  --project $PROJECT_ID \
+  --database "(default)" \
+  --collection-group exchange_tokens \
+  --enable-ttl
+
+gcloud firestore fields ttls update ttl_at \
+  --project $PROJECT_ID \
+  --database "(default)" \
+  --collection-group exchange_match_records \
+  --enable-ttl
+```
+
 ## Local Docker Check
 
 ```bash
