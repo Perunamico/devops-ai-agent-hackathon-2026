@@ -3,6 +3,7 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
+  reload,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -138,6 +139,23 @@ export async function resendVerificationEmail(): Promise<void> {
   const user = auth?.currentUser;
   if (!user) throw new Error('Not signed in.');
   await sendEmailVerification(user);
+}
+
+export async function reloadCurrentUser(): Promise<AuthState> {
+  const auth = getConfiguredAuth();
+  const user = auth?.currentUser;
+  if (!user) {
+    return {
+      configured: isConfigured,
+      signedIn: false,
+      uid: null,
+      isAnonymous: false,
+      email: null,
+      emailVerified: false,
+    };
+  }
+  await reload(user);
+  return authStateFromUser(auth.currentUser);
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {

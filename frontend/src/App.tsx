@@ -1,13 +1,15 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { PetResponse, SelectedLabel } from './types';
 import { getCurrentPet } from './api';
 import {
   createAccountWithEmail,
+  reloadCurrentUser,
   resendVerificationEmail,
   sendPasswordReset,
   signInWithEmail,
+  signOutUser,
   subscribeAuthState,
   type AuthState,
 } from './firebase';
@@ -153,8 +155,20 @@ function authErrorMessage(error: unknown): string {
   return '処理に失敗しました。時間をおいてもう一度試してください。';
 }
 
+type AuthView = 'landing' | 'signin' | 'signup' | 'reset';
+
+function AuthShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-svh bg-white flex items-center justify-center px-5">
+      <div className="w-full max-w-sm">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function AuthScreen() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [view, setView] = useState<AuthView>('landing');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -162,16 +176,22 @@ function AuthScreen() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  async function handleSubmit(e: React.FormEvent) {
+  function moveTo(nextView: AuthView) {
+    setView(nextView);
+    setError('');
+    setNotice('');
+  }
+
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (submitting) return;
     setSubmitting(true);
     setError('');
     setNotice('');
     try {
-      if (mode === 'signup') {
+      if (view === 'signup') {
         await createAccountWithEmail(email.trim(), password);
-        setNotice('確認メールを送信しました。');
+        setNotice('確認メールを送信しました。メール内のリンクを開いてから続けてください。');
       } else {
         await signInWithEmail(email.trim(), password);
       }
@@ -183,11 +203,12 @@ function AuthScreen() {
   }
 
   async function handlePasswordReset() {
-    if (!email.trim() || resetting) {
+    if (!email.trim()) {
       setError('パスワード再設定にはメールアドレスを入力してください。');
       setNotice('');
       return;
     }
+    if (resetting) return;
     setResetting(true);
     setError('');
     setNotice('');
@@ -201,50 +222,98 @@ function AuthScreen() {
     }
   }
 
-  async function handleResendVerification() {
-    setError('');
-    setNotice('');
-    try {
-      await resendVerificationEmail();
-      setNotice('確認メールを再送しました。');
-    } catch (err) {
-      setError(authErrorMessage(err));
-    }
+  if (view === 'landing') {
+    return (
+      <AuthShell>
+        <div className="space-y-8">
+          <div className="space-y-3 text-center">
+            <img src="/icons/home.png" className="w-20 h-20 mx-auto object-contain" alt="" />
+            <div className="space-y-2">
+              <h1 className="text-2xl font-bold text-gray-900">AI Pet</h1>
+              <p className="text-sm text-gray-500 leading-relaxed">
+                ペットと話して、好きなことや思い出を少しずつ育てます。
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => moveTo('signup')}
+              className="w-full h-14 rounded-full bg-violet-600 text-white font-bold flex items-center justify-center"
+            >
+              新しくはじめる
+            </button>
+            <button
+              type="button"
+              onClick={() => moveTo('signin')}
+              className="w-full h-14 rounded-full bg-gray-100 text-gray-900 font-bold flex items-center justify-center border border-gray-200"
+            >
+              ログイン
+            </button>
+          </div>
+        </div>
+      </AuthShell>
+    );
+  }
+
+  if (view === 'reset') {
+    return (
+      <AuthShell>
+        <form onSubmit={(e) => {
+          e.preventDefault();
+          void handlePasswordReset();
+        }} className="space-y-5">
+          <div className="space-y-2 text-center">
+            <h1 className="text-xl font-bold text-gray-900">パスワード再設定</h1>
+            <p className="text-sm text-gray-500 leading-relaxed">
+              登録したメールアドレスに再設定用のメールを送ります。
+            </p>
+          </div>
+
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="メールアドレス"
+            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white"
+            required
+          />
+
+          <button
+            type="submit"
+            disabled={!email.trim() || resetting}
+            className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {resetting ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : '再設定メールを送る'}
+          </button>
+
+          <div className="min-h-[52px] text-center text-sm leading-relaxed">
+            {error && <p className="text-red-500">{error}</p>}
+            {notice && <p className="text-gray-500">{notice}</p>}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => moveTo('signin')}
+            className="w-full text-sm font-bold text-violet-600"
+          >
+            ログインに戻る
+          </button>
+        </form>
+      </AuthShell>
+    );
   }
 
   return (
-    <div className="min-h-svh bg-white flex items-center justify-center px-5">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+    <AuthShell>
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="text-center space-y-2 pb-2">
-          <h1 className="text-xl font-bold text-gray-900">おかえりなさい</h1>
+          <h1 className="text-xl font-bold text-gray-900">{view === 'signup' ? '新規登録' : 'ログイン'}</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
-            ペットの名前や記憶をあなたのアカウントに保存します。
+            {view === 'signup' ? 'メール確認後にペットの登録へ進めます。' : '登録したメールアドレスで続けます。'}
           </p>
-        </div>
-
-        <div className="flex rounded-full bg-gray-100 p-1 border border-gray-200">
-          <button
-            type="button"
-            onClick={() => {
-              setMode('signin');
-              setError('');
-              setNotice('');
-            }}
-            className={`flex-1 rounded-full py-2 text-sm font-bold transition-colors ${mode === 'signin' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
-          >
-            ログイン
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode('signup');
-              setError('');
-              setNotice('');
-            }}
-            className={`flex-1 rounded-full py-2 text-sm font-bold transition-colors ${mode === 'signup' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'}`}
-          >
-            新規登録
-          </button>
         </div>
 
         <div className="space-y-3">
@@ -259,7 +328,7 @@ function AuthScreen() {
           />
           <input
             type="password"
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            autoComplete={view === 'signup' ? 'new-password' : 'current-password'}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="パスワード"
@@ -274,34 +343,122 @@ function AuthScreen() {
           disabled={!email.trim() || password.length < 6 || submitting}
           className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
         >
-          {submitting ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : mode === 'signup' ? '登録する' : 'ログインする'}
+          {submitting ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : view === 'signup' ? '登録する' : 'ログインする'}
         </button>
 
-        <div className="min-h-[76px] text-center text-sm leading-relaxed">
+        <div className="min-h-[52px] text-center text-sm leading-relaxed">
           {error && <p className="text-red-500">{error}</p>}
           {notice && <p className="text-gray-500">{notice}</p>}
-          {mode === 'signin' && (
+          {view === 'signin' && (
             <button
               type="button"
-              onClick={handlePasswordReset}
+              onClick={() => moveTo('reset')}
               disabled={resetting}
               className="mt-2 text-xs font-bold text-violet-600 disabled:text-gray-300"
             >
-              {resetting ? '送信中...' : 'パスワードを忘れた場合'}
-            </button>
-          )}
-          {mode === 'signup' && notice && (
-            <button
-              type="button"
-              onClick={handleResendVerification}
-              className="mt-2 text-xs font-bold text-violet-600"
-            >
-              確認メールを再送
+              パスワードを忘れた場合
             </button>
           )}
         </div>
+
+        <div className="flex items-center justify-center gap-4 text-sm font-bold text-violet-600">
+          <button
+            type="button"
+            onClick={() => moveTo(view === 'signup' ? 'signin' : 'signup')}
+          >
+            {view === 'signup' ? 'ログインへ' : '新規登録へ'}
+          </button>
+          <button type="button" onClick={() => moveTo('landing')}>
+            最初に戻る
+          </button>
+        </div>
       </form>
-    </div>
+    </AuthShell>
+  );
+}
+
+function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVerified: (state: AuthState) => void }) {
+  const [checking, setChecking] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  async function handleCheckVerified() {
+    if (checking) return;
+    setChecking(true);
+    setError('');
+    setNotice('');
+    try {
+      const state = await reloadCurrentUser();
+      onVerified(state);
+      if (!state.emailVerified) {
+        setNotice('まだ確認が完了していません。メール内のリンクを開いてからもう一度確認してください。');
+      }
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (resending) return;
+    setResending(true);
+    setError('');
+    setNotice('');
+    try {
+      await resendVerificationEmail();
+      setNotice('確認メールを再送しました。');
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setResending(false);
+    }
+  }
+
+  return (
+    <AuthShell>
+      <div className="space-y-6 text-center">
+        <div className="space-y-2">
+          <h1 className="text-xl font-bold text-gray-900">メールを確認してください</h1>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            {auth.email ?? '登録メールアドレス'} に確認メールを送りました。確認が終わるまでペットの登録には進めません。
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={handleCheckVerified}
+            disabled={checking}
+            className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {checking ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : '確認できたので続ける'}
+          </button>
+          <button
+            type="button"
+            onClick={handleResendVerification}
+            disabled={resending}
+            className="w-full h-14 rounded-full bg-gray-100 text-gray-900 font-bold border border-gray-200 disabled:text-gray-400"
+          >
+            {resending ? '送信中...' : '確認メールを再送'}
+          </button>
+        </div>
+
+        <div className="min-h-[52px] text-sm leading-relaxed">
+          {error && <p className="text-red-500">{error}</p>}
+          {notice && <p className="text-gray-500">{notice}</p>}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void signOutUser()}
+          className="text-sm font-bold text-violet-600"
+        >
+          別のアカウントでログイン
+        </button>
+      </div>
+    </AuthShell>
   );
 }
 
@@ -359,7 +516,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   }, [initialPet, setPetBubble]);
 
   useEffect(() => {
-    if (initialPet || !auth || !auth.configured || !auth.signedIn) return;
+    if (initialPet || !auth || !auth.configured || !auth.signedIn || !auth.emailVerified) return;
     let cancelled = false;
     setHomeLoading(true);
     getCurrentPet()
@@ -430,6 +587,9 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
 
   if (authLoading) return <AuthLoadingScreen />;
   if (!initialPet && auth?.configured && !auth.signedIn) return <AuthScreen />;
+  if (!initialPet && auth?.configured && auth.signedIn && !auth.emailVerified) {
+    return <EmailVerificationScreen auth={auth} onVerified={setAuth} />;
+  }
   if (showLabelOnboarding) {
     return (
       <AppContext.Provider value={ctx}>
