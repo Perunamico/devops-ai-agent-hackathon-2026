@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import type { PetResponse, SelectedLabel } from './types';
 import { getCurrentPet } from './api';
 import {
@@ -427,7 +427,7 @@ function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVeri
         <div className="space-y-2">
           <h1 className="text-xl font-bold text-gray-900">メールを確認してください</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
-            {auth.email ?? '登録メールアドレス'} に確認メールを送りました。確認が終わるまでペットの登録には進めません。
+            {auth.email ?? '登録メールアドレス'} の確認がまだ完了していません。登録時に届いた確認メールのリンクを開いてから、「確認できたので続ける」を押してください。
           </p>
           <p className="text-xs text-gray-400 leading-relaxed">
             メールが迷惑メールに振り分けられることがあります。届かない場合は迷惑メールフォルダをご確認ください。
@@ -505,13 +505,28 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     emailVerified: true,
   } : null);
   const [authLoading, setAuthLoading] = useState(!initialPet);
+  // サインインごとに一度だけ、未確認判定を出す前のサーバ再取得を行うためのフラグ。
+  const verifyRecheckedRef = useRef(false);
 
   useEffect(() => {
     if (initialPet) return;
     return subscribeAuthState((state) => {
+      if (state.signedIn && !state.emailVerified && !verifyRecheckedRef.current) {
+        // キャッシュされたユーザーの emailVerified は古いことがある（別セッション/前回訪問で
+        // 確認済みでも false のまま）。確認待ち画面を出す前に一度だけサーバから取り直す。
+        // 確認済みだった場合は reloadCurrentUser が ID トークンも強制更新する。
+        verifyRecheckedRef.current = true;
+        reloadCurrentUser()
+          .then((fresh) => setAuth(fresh))
+          .catch(() => setAuth(state))
+          .finally(() => setAuthLoading(false));
+        return;
+      }
       setAuth(state);
       setAuthLoading(false);
       if (!state.signedIn) {
+        // 次のサインインでも未確認判定の取り直しが効くようにリセットする。
+        verifyRecheckedRef.current = false;
         setPet(null);
         setPetBubble(null);
         setReviewCount(0);
