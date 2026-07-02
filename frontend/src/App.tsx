@@ -5,8 +5,11 @@ import type { PetResponse, SelectedLabel } from './types';
 import { getCurrentPet } from './api';
 import {
   createAccountWithEmail,
+  reloadCurrentUser,
+  resendVerificationEmail,
   sendPasswordReset,
   signInWithEmail,
+  signOutUser,
   subscribeAuthState,
   type AuthState,
 } from './firebase';
@@ -188,6 +191,7 @@ function AuthScreen() {
     try {
       if (view === 'signup') {
         await createAccountWithEmail(email.trim(), password);
+        setNotice('確認メールを送信しました。メール内のリンクを開いてから続けてください。');
       } else {
         await signInWithEmail(email.trim(), password);
       }
@@ -310,7 +314,7 @@ function AuthScreen() {
         <div className="text-center space-y-2 pb-2">
           <h1 className="text-xl font-bold text-gray-900">{view === 'signup' ? '新規登録' : 'ログイン'}</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
-            {view === 'signup' ? '登録するとすぐにペットの名付けへ進めます。' : '登録したメールアドレスで続けます。'}
+            {view === 'signup' ? 'メール確認後にペットの登録へ進めます。' : '登録したメールアドレスで続けます。'}
           </p>
         </div>
 
@@ -375,6 +379,91 @@ function AuthScreen() {
   );
 }
 
+function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVerified: (state: AuthState) => void }) {
+  const [checking, setChecking] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  async function handleCheckVerified() {
+    if (checking) return;
+    setChecking(true);
+    setError('');
+    setNotice('');
+    try {
+      const state = await reloadCurrentUser();
+      onVerified(state);
+      if (!state.emailVerified) {
+        setNotice('まだ確認が完了していません。メール内のリンクを開いてからもう一度確認してください。');
+      }
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  async function handleResendVerification() {
+    if (resending) return;
+    setResending(true);
+    setError('');
+    setNotice('');
+    try {
+      await resendVerificationEmail();
+      setNotice('確認メールを再送しました。');
+    } catch (err) {
+      setError(authErrorMessage(err));
+    } finally {
+      setResending(false);
+    }
+  }
+
+  return (
+    <AuthShell>
+      <div className="space-y-6 text-center">
+        <div className="space-y-2">
+          <h1 className="text-xl font-bold text-gray-900">メールを確認してください</h1>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            {auth.email ?? '登録メールアドレス'} に確認メールを送りました。確認が終わるまでペットの登録には進めません。
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={handleCheckVerified}
+            disabled={checking}
+            className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+          >
+            {checking ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : '確認できたので続ける'}
+          </button>
+          <button
+            type="button"
+            onClick={handleResendVerification}
+            disabled={resending}
+            className="w-full h-14 rounded-full bg-gray-100 text-gray-900 font-bold border border-gray-200 disabled:text-gray-400"
+          >
+            {resending ? '送信中...' : '確認メールを再送'}
+          </button>
+        </div>
+
+        <div className="min-h-[52px] text-sm leading-relaxed">
+          {error && <p className="text-red-500">{error}</p>}
+          {notice && <p className="text-gray-500">{notice}</p>}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void signOutUser()}
+          className="text-sm font-bold text-violet-600"
+        >
+          別のアカウントでログイン
+        </button>
+      </div>
+    </AuthShell>
+  );
+}
+
 function AuthLoadingScreen() {
   return (
     <div className="min-h-svh bg-white flex items-center justify-center">
@@ -407,6 +496,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     uid: initialPet.user_id,
     isAnonymous: false,
     email: null,
+    emailVerified: true,
   } : null);
   const [authLoading, setAuthLoading] = useState(!initialPet);
 
@@ -428,7 +518,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
   }, [initialPet, setPetBubble]);
 
   useEffect(() => {
-    if (initialPet || !auth || !auth.configured || !auth.signedIn) return;
+    if (initialPet || !auth || !auth.configured || !auth.signedIn || !auth.emailVerified) return;
     let cancelled = false;
     setHomeLoading(true);
     getCurrentPet()
@@ -499,6 +589,9 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
 
   if (authLoading) return <AuthLoadingScreen />;
   if (!initialPet && auth?.configured && !auth.signedIn) return <AuthScreen />;
+  if (!initialPet && auth?.configured && auth.signedIn && !auth.emailVerified) {
+    return <EmailVerificationScreen auth={auth} onVerified={setAuth} />;
+  }
   if (showLabelOnboarding) {
     return (
       <AppContext.Provider value={ctx}>
