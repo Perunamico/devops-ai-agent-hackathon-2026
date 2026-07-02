@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { useApp } from '../App';
 import { issueToken, resolveExchange, getMatchStatus, getSession, markSessionReady, endSession, pollToken, scanQrToken } from '../api';
@@ -661,8 +662,11 @@ export default function ExchangeScreen() {
           </div>
         </div>
 
-        {/* 交流失敗ポップ: will-change:transform で GPU レイヤーに昇格し video の上に合成 */}
-        {step === 'failed' && !showQR && (
+        {/* 交流失敗ポップ: will-change:transform で GPU レイヤーに昇格し video の上に合成。
+            .exchange-fixed(z-40) がスタッキングコンテキストを作るため、内側の z-50 は
+            TopNav(.side-nav, z-50) に外側から勝てない（issue #108）。document.body へ
+            Portal することでこの制約を回避し、暗幕を確実に最前面へ出す。 */}
+        {step === 'failed' && !showQR && createPortal(
           <div
             className="fixed inset-0 z-50 flex items-end justify-center pb-8 px-4 bg-black/40"
             style={{ willChange: 'transform' }}
@@ -694,7 +698,8 @@ export default function ExchangeScreen() {
                 </button>
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     );
