@@ -28,14 +28,14 @@ const AVAILABLE_ANIMS: AnimName[] = [
 const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
 
 const CHAT_FILLERS = [
-  'んとね・・・',
-  'あとね、あとね！',
-  'そうなんだ、それじゃあ・・・',
-  'そうなんだ、おしゃべり楽しいな！じゃあ・・・',
-  'えへへ、考えてるよ・・・',
-  'ふむふむ、ちょっと待ってね・・・',
-  'わかった！えっとね・・・',
-  'うんうん、それでね・・・',
+  'わほほーい',
+  'わっふふふ',
+  'わおーーん',
+  'きゃふんっ',
+  'わふーん',
+  'にゃー',
+  'わんだー',
+  'わんわん',
 ] as const;
 
 function pickInterlude(): AnimName {
@@ -44,6 +44,10 @@ function pickInterlude(): AnimName {
 
 function pickChatFiller(): string {
   return CHAT_FILLERS[Math.floor(Math.random() * CHAT_FILLERS.length)];
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // --- <video>(白背景 mp4) ベースのアニメーション ---
@@ -240,17 +244,25 @@ export default function HomeScreen() {
     if (!message || submitting) return;
     // 送信の瞬間にランダムな interlude を1回再生してペットを反応させる（終了後 hand へ戻る）
     setCurrentAnim(pickInterlude());
-    // LLM の返答が届くまで、無言の待ち時間を避けるためルールベースの短いフィラーを表示する。
-    setPetBubble(pickChatFiller());
     setSubmitting(true);
+
+    // LLM の返答が 1 秒以内に届けばフィラーは出さず、届かなければ
+    // 無言の待ち時間を避けるためルールベースの短いフィラーを表示する。
+    let replied = false;
+    sleep(1000).then(() => {
+      if (!replied) setPetBubble(pickChatFiller());
+    });
+
     try {
       const result = await sendChat({ message });
+      replied = true;
       setPetBubble(result.reply);
       setContent('');
       if (result.memory?.category === 'review_required') {
         getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
       }
     } catch {
+      replied = true;
       setPetBubble('うまく聞き取れなかった...もう一度話しかけて！');
     } finally {
       setSubmitting(false);
