@@ -561,6 +561,58 @@ class FirestoreService:
             return None
         return self.get_exchange_analysis(session["analysis_id"])
 
+    # ---- friends（交流が成立した相手の一覧）----
+
+    def get_friends_overview(self, user_id: str) -> dict:
+        """「あそぶ」で交流が成立した相手ごとの一覧と統計を返す。
+
+        exchange_sessions は双方向照合（音声）または QR スキャンが成立したときにしか
+        作られないため、セッションに載っている相手 = 交流に成功した相手。
+        相手ごとに最新セッションを採用し、共通の話題はその交流の分析結果から取る。
+        """
+        sessions = [
+            s for s in self._list("exchange_sessions")
+            if user_id in (s.get("user_a_id"), s.get("user_b_id"))
+        ]
+        sessions.sort(key=lambda s: s.get("created_at", ""), reverse=True)
+
+        friends: list[dict] = []
+        seen: set[str] = set()
+        topic_total = 0
+        for session in sessions:
+            other_id = (
+                session.get("user_b_id")
+                if session.get("user_a_id") == user_id
+                else session.get("user_a_id")
+            )
+            if not other_id or other_id in seen:
+                continue
+            seen.add(other_id)
+
+            analysis = self.get_analysis_by_session(session.get("id", "")) or {}
+            topics = [t for t in analysis.get("common_topics", []) if isinstance(t, str) and t.strip()]
+            topic_total += len(dict.fromkeys(topics))
+
+            # 交流中メッセージと同じ優先順位: 本人向け → 共通メッセージ。
+            by_user = session.get("common_message_by_user") or {}
+            comment = by_user.get(user_id) or session.get("common_message") or ""
+
+            pet = self.get_pet_by_user(other_id)
+            friends.append({
+                "user_id": other_id,
+                "pet_name": (pet or {}).get("name") or "なまえのないペット",
+                "last_interacted_at": session.get("created_at", ""),
+                "common_topics": topics[:3],
+                "comment": comment,
+            })
+
+        return {
+            "friends": friends,
+            "friend_count": len(friends),
+            "common_topic_count": topic_total,
+            "last_interaction_at": sessions[0].get("created_at") if sessions else None,
+        }
+
     # ---- report cards ----
 
     def save_report_cards(self, analysis_id: str, cards: list[dict]) -> list[str]:

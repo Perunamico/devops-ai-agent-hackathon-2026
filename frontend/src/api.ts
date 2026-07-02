@@ -15,6 +15,7 @@ import type {
   SessionResponse,
   ExchangeAnalysisResponse,
   ReportResponse,
+  FriendsResponse,
 } from './types';
 import { getFirebaseIdToken } from './firebase';
 
@@ -104,6 +105,11 @@ export const markSessionReady = (sessionId: string) =>
 
 export const endSession = (sessionId: string) =>
   apiFetch<void>(`/exchanges/session/${sessionId}/end`, { method: 'POST' });
+
+// ---- Friends ----
+
+export const getFriends = () =>
+  apiFetch<FriendsResponse>('/friends');
 
 // ---- Analysis / Report ----
 

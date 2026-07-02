@@ -12,6 +12,8 @@ from app.config import Settings, get_settings
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.schemas.encounter import (
     ExchangeTokenResponse,
+    FriendItem,
+    FriendsResponse,
     ResolveExchangeRequest,
     ResolveExchangeResponse,
     MatchStatusResponse,
@@ -375,6 +377,22 @@ def end_session(
 ):
     agent.end_session(session_id, uid)
     return {"session_id": session_id, "status": "ended"}
+
+
+# ---- friends（交流が成立した相手の一覧）----
+
+@app.get("/friends", response_model=FriendsResponse)
+def get_friends(
+    uid: str = Depends(require_auth),
+    db: FirestoreService = Depends(get_firestore),
+):
+    data = db.get_friends_overview(uid)
+    return FriendsResponse(
+        friends=[FriendItem(**f) for f in data["friends"]],
+        friend_count=data["friend_count"],
+        common_topic_count=data["common_topic_count"],
+        last_interaction_at=data["last_interaction_at"],
+    )
 
 
 # ---- analysis / reports（旧 AnalysisScreen 互換）----
