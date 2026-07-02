@@ -296,6 +296,23 @@ body {
 .animate-spin { animation: spin 1s linear infinite; }
 .animate-bounce { animation: bounce 1s infinite; }
 
+/* LP（未ログイン）のヒーロー。ペット映像＋表札と同じ丸ゴシックのタイトルで
+   アプリ本体と第一印象を揃える */
+.landing-pet {
+  height: 11rem;
+  width: auto;
+  object-fit: contain;
+}
+.landing-title {
+  margin: 0;
+  font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  letter-spacing: 0.02em;
+  color: #111827;
+}
+
 /* ホーム最上部「{ペット名}のお部屋」表札（plate.png 画像＋文字オーバーレイ） */
 .nameplate {
   position: relative;
