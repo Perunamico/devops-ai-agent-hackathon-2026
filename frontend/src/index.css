@@ -148,6 +148,7 @@ body {
 .h-svh { height: 100svh; }
 .min-h-0 { min-height: 0; }
 .min-h-svh { min-height: 100svh; }
+.min-h-\[52px\] { min-height: 52px; }
 .min-h-\[60vh\] { min-height: 60vh; }
 .min-h-\[70vh\] { min-height: 70vh; }
 .max-w-sm { max-width: 24rem; }
@@ -163,12 +164,17 @@ body {
 .rounded-full { border-radius: 9999px; }
 .border-0 { border: 0; }
 .border { border: 1px solid #e5e7eb; }
+.border-2 { border-width: 2px; border-style: solid; }
+.border-4 { border-width: 4px; border-style: solid; }
 .border-gray-100 { border-color: #f3f4f6; }
 .border-gray-200 { border-color: #e5e7eb; }
 .border-gray-300 { border-color: #d1d5db; }
+.border-violet-200 { border-color: #ddd6fe; }
 .border-violet-300 { border-color: #c4b5fd; }
 .border-violet-400 { border-color: #a78bfa; }
 .border-violet-600 { border-color: #7c3aed; }
+.border-t-transparent { border-top-color: transparent; }
+.border-t-violet-500 { border-top-color: #8b5cf6; }
 
 .bg-white { background-color: #fff; }
 .bg-transparent { background-color: transparent; }
@@ -261,8 +267,12 @@ body {
 .hover\:bg-violet-700:hover { background-color: #6d28d9; }
 .disabled\:opacity-50:disabled { opacity: 0.5; }
 .disabled\:cursor-not-allowed:disabled { cursor: not-allowed; }
+.disabled\:text-gray-400:disabled { color: #9ca3af; }
 .focus\:outline-none:focus { outline: 2px solid transparent; outline-offset: 2px; }
+.focus\:bg-white:focus { background-color: #fff; }
+.focus\:border-violet-400:focus { border-color: #a78bfa; }
 .focus\:ring-2:focus { box-shadow: 0 0 0 2px var(--tw-ring-color); }
+.focus\:ring-violet-100:focus { --tw-ring-color: #ede9fe; }
 .focus\:ring-violet-400:focus { --tw-ring-color: #a78bfa; }
 .focus-within\:bg-white:focus-within { background-color: #fff; }
 .focus-within\:border-violet-400:focus-within { border-color: #a78bfa; }
@@ -285,6 +295,23 @@ body {
 .animate-pulse { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
 .animate-spin { animation: spin 1s linear infinite; }
 .animate-bounce { animation: bounce 1s infinite; }
+
+/* LP（未ログイン）のヒーロー。ペット映像＋表札と同じ丸ゴシックのタイトルで
+   アプリ本体と第一印象を揃える */
+.landing-pet {
+  height: 11rem;
+  width: auto;
+  object-fit: contain;
+}
+.landing-title {
+  margin: 0;
+  font-family: "M PLUS Rounded 1c", "Hiragino Maru Gothic ProN", system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 1.75rem;
+  line-height: 2.25rem;
+  letter-spacing: 0.02em;
+  color: #111827;
+}
 
 /* ホーム最上部「{ペット名}のお部屋」表札（plate.png 画像＋文字オーバーレイ） */
 .nameplate {
@@ -330,6 +357,14 @@ body {
   object-fit: contain;
   /* video 化で白背景の不透明矩形になるため、音波/音符を確実に前面へ出す基準にする */
   z-index: 1;
+}
+/* 交流失敗ポップの暗幕(bg-black/40)は <video> のハードウェアオーバーレイ合成には
+   効かないことがある（issue #108）。ポップ表示中は video/img 自身を直接減光し、
+   暗幕越しに背景が暗く見える他要素と体験を揃える。
+   brightness(0.6) は black/40 のアルファブレンド(元色*0.6)に近似させた値。 */
+.bark-img-dimmed {
+  filter: brightness(0.6);
+  transition: filter 0.15s ease;
 }
 .bark-pet {
   position: absolute;

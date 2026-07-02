@@ -3,7 +3,6 @@ import {
   createUserWithEmailAndPassword,
   getAuth,
   onAuthStateChanged,
-  sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
@@ -52,7 +51,6 @@ export interface AuthState {
   /** 匿名認証かどうか */
   isAnonymous: boolean;
   email: string | null;
-  emailVerified: boolean;
 }
 
 export async function getAuthState(): Promise<AuthState> {
@@ -63,7 +61,6 @@ export async function getAuthState(): Promise<AuthState> {
       uid: null,
       isAnonymous: false,
       email: null,
-      emailVerified: false,
     };
   }
 
@@ -80,7 +77,6 @@ export async function getAuthState(): Promise<AuthState> {
       uid: null,
       isAnonymous: false,
       email: null,
-      emailVerified: false,
     };
   }
 }
@@ -98,7 +94,6 @@ function authStateFromUser(user: User | null): AuthState {
     uid: user?.uid ?? null,
     isAnonymous: user?.isAnonymous ?? false,
     email: user?.email ?? null,
-    emailVerified: user?.emailVerified ?? false,
   };
 }
 
@@ -111,7 +106,6 @@ export function subscribeAuthState(callback: (state: AuthState) => void): () => 
       uid: null,
       isAnonymous: false,
       email: null,
-      emailVerified: false,
     });
     return () => {};
   }
@@ -127,17 +121,7 @@ export async function signInWithEmail(email: string, password: string): Promise<
 export async function createAccountWithEmail(email: string, password: string): Promise<void> {
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
-  const credential = await createUserWithEmailAndPassword(auth, email, password);
-  await sendEmailVerification(credential.user).catch((error) => {
-    console.warn('Email verification failed.', error);
-  });
-}
-
-export async function resendVerificationEmail(): Promise<void> {
-  const auth = getConfiguredAuth();
-  const user = auth?.currentUser;
-  if (!user) throw new Error('Not signed in.');
-  await sendEmailVerification(user);
+  await createUserWithEmailAndPassword(auth, email, password);
 }
 
 export async function sendPasswordReset(email: string): Promise<void> {

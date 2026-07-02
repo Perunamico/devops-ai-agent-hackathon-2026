@@ -196,12 +196,6 @@ export default function SettingsScreen() {
               </div>
             </div>
           </div>
-          {auth?.uid && (
-            <div className={styles.uidBlock}>
-              <p className={styles.uidLabel}>ユーザーID</p>
-              <p className={styles.uidValue}>{auth.uid}</p>
-            </div>
-          )}
           <button className={styles.rowButton} onClick={() => setConfirmLogout(true)}>
             <span className={styles.logoutText}>ログアウト</span>
             <span className={styles.chevron}>›</span>
@@ -233,7 +227,6 @@ export default function SettingsScreen() {
           <div className={styles.confirmCard}>
             <div className={styles.confirmHead}>
               <h3 className={styles.confirmTitle}>ログアウトしますか？</h3>
-              <p className={styles.confirmDesc}>この端末のローカルデータが消去されます。</p>
             </div>
             <div className={styles.confirmActions}>
               <button className={styles.dangerButton} onClick={handleLogout} disabled={loggingOut}>
