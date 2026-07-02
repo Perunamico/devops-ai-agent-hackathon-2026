@@ -14,23 +14,32 @@ interface Props {
   saving?: boolean;
 }
 
-// 全 selectable 名 -> ラベル情報。中カテゴリー・小カテゴリーの両方を登録する（名前はツリー全体で一意）。
+// 全 selectable 名 -> ラベル情報。中・小・最小のいずれも選択対象（名前はツリー全体で一意）。
+// category_large は backend の固定カテゴリー(=中カテゴリー medium)。
 const NAME_INFO = new Map<string, SelectedLabel>();
 for (const g of LABEL_TREE) {
   for (const m of g.mediums) {
     NAME_INFO.set(m.medium, {
       name: m.medium,
-      category_large: g.large,
-      category_medium: m.medium,
+      category_large: m.medium,
+      category_medium: '',
       category_small: '',
     });
-    for (const s of m.items) {
-      NAME_INFO.set(s, {
-        name: s,
-        category_large: g.large,
-        category_medium: m.medium,
-        category_small: s,
+    for (const s of m.smalls) {
+      NAME_INFO.set(s.small, {
+        name: s.small,
+        category_large: m.medium,
+        category_medium: s.small,
+        category_small: '',
       });
+      for (const x of s.items) {
+        NAME_INFO.set(x, {
+          name: x,
+          category_large: m.medium,
+          category_medium: s.small,
+          category_small: x,
+        });
+      }
     }
   }
 }
@@ -39,10 +48,9 @@ const ALL_NAMES = Array.from(NAME_INFO.keys());
 
 type ChipState = 'on' | 'hint' | 'plain' | 'disabled';
 
-function chipClass(state: ChipState, lg = false): string {
+function chipClass(state: ChipState): string {
   return [
     styles.chip,
-    lg ? styles.chipLg : '',
     state === 'on' ? styles.chipOn : '',
     state === 'hint' ? styles.chipHint : '',
     state === 'disabled' ? styles.chipDisabled : '',
@@ -56,8 +64,6 @@ export default function LabelSelectScreen({ initial, mode, onDone, onCancel, sav
     () => new Set(initial.map((l) => l.name).filter((n) => NAME_INFO.has(n))),
   );
   const [query, setQuery] = useState('');
-  // 画面全体で1つの中カテゴリーだけ展開する（モックの見た目に合わせる）。
-  const [openMedium, setOpenMedium] = useState<string | null>(null);
 
   const q = query.trim();
   const count = selected.size;
@@ -91,6 +97,14 @@ export default function LabelSelectScreen({ initial, mode, onDone, onCancel, sav
 
   function leafState(name: string): ChipState {
     if (selected.has(name)) return 'on';
+    if (count >= MAX_LABELS) return 'disabled';
+    return 'plain';
+  }
+
+  // 親カテゴリー（中/小）の状態。展開は「選択」から導出するため、選択中の子がある限り開いたまま。
+  function branchState(name: string, hasSelectedChild: boolean): ChipState {
+    if (selected.has(name)) return 'on';
+    if (hasSelectedChild) return 'hint';
     if (count >= MAX_LABELS) return 'disabled';
     return 'plain';
   }
@@ -144,63 +158,65 @@ export default function LabelSelectScreen({ initial, mode, onDone, onCancel, sav
             )}
           </div>
         ) : (
-          LABEL_TREE.map((g) => {
-            const openM = g.mediums.find((m) => m.medium === openMedium) ?? null;
-            return (
-              <div key={g.large} className={openM ? `${styles.card} ${styles.cardBig}` : styles.card}>
-                <span className={styles.cardLabel}>{g.large}</span>
+          LABEL_TREE.map((g) => (
+            <div key={g.large} className={styles.card}>
+              <span className={styles.cardLabel}>{g.large}</span>
 
-                {/* 中カテゴリー（タップで小カテゴリーを開閉） */}
-                <div className={styles.chipRow}>
-                  {g.mediums.map((m) => {
-                    const isOpen = openMedium === m.medium;
-                    const hasSel = selected.has(m.medium) || m.items.some((s) => selected.has(s));
-                    const st: ChipState = isOpen ? 'on' : hasSel ? 'hint' : 'plain';
-                    return (
-                      <button
-                        key={m.medium}
-                        onClick={() => setOpenMedium(isOpen ? null : m.medium)}
-                        className={chipClass(st)}
-                      >
-                        {m.medium}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* 展開パネル: 中カテゴリー自体（全般）+ 小カテゴリー（いずれも選択可） */}
-                {openM && (
-                  <div className={styles.panel}>
-                    {(() => {
-                      const st = leafState(openM.medium);
-                      return (
+              {/* 1つの折り返し行に中→小→最小をインライン展開する。
+                  親を選ぶ（＝カウント）と、その右続きに子が挿入される。
+                  配下に選択がある限り親の展開は閉じない（展開は選択から導出）。 */}
+              <div className={styles.chipRow}>
+                {g.mediums.flatMap((m) => {
+                  const mediumHasChild = m.smalls.some(
+                    (s) => selected.has(s.small) || s.items.some((x) => selected.has(x)),
+                  );
+                  const els = [
+                    <button
+                      key={m.medium}
+                      onClick={() => toggle(m.medium)}
+                      disabled={branchState(m.medium, mediumHasChild) === 'disabled'}
+                      className={chipClass(branchState(m.medium, mediumHasChild))}
+                    >
+                      {m.medium}
+                    </button>,
+                  ];
+                  // 中カテゴリーが選択済み or 配下に選択があれば、小カテゴリーを右続きに展開。
+                  if (selected.has(m.medium) || mediumHasChild) {
+                    for (const s of m.smalls) {
+                      const smallHasMini = s.items.some((x) => selected.has(x));
+                      els.push(
                         <button
-                          onClick={() => toggle(openM.medium)}
-                          disabled={st === 'disabled'}
-                          className={chipClass(st, true)}
+                          key={s.small}
+                          onClick={() => toggle(s.small)}
+                          disabled={branchState(s.small, smallHasMini) === 'disabled'}
+                          className={chipClass(branchState(s.small, smallHasMini))}
                         >
-                          {openM.medium}（全般）
-                        </button>
+                          {s.small}
+                        </button>,
                       );
-                    })()}
-                    {openM.items.map((s) => {
-                      const st = leafState(s);
-                      return (
-                        <button
-                          key={s}
-                          onClick={() => toggle(s)}
-                          disabled={st === 'disabled'}
-                          className={chipClass(st, true)}
-                        >
-                          {s}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                      // 小カテゴリーが選択済み or 最小に選択があれば、最小を右続きに展開。
+                      if (selected.has(s.small) || smallHasMini) {
+                        for (const x of s.items) {
+                          const st = leafState(x);
+                          els.push(
+                            <button
+                              key={x}
+                              onClick={() => toggle(x)}
+                              disabled={st === 'disabled'}
+                              className={chipClass(st)}
+                            >
+                              {x}
+                            </button>,
+                          );
+                        }
+                      }
+                    }
+                  }
+                  return els;
+                })}
               </div>
-            );
-          })
+            </div>
+          ))
         )}
       </div>
 
