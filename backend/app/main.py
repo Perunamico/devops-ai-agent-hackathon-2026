@@ -33,7 +33,7 @@ from app.schemas.memory import (
 )
 from app.schemas.pet import PetCreate, PetResponse, UserInputCreate
 from app.services.firestore_service import FirestoreService
-from app.services.token_service import EmailNotVerifiedError, TokenService
+from app.services.token_service import TokenService
 from app.services.vertex_ai_service import VertexAIService
 
 logging.basicConfig(level=logging.INFO)
@@ -99,8 +99,6 @@ async def require_auth(
     id_token = authorization.removeprefix("Bearer ").strip()
     try:
         return token_svc.verify_firebase_token(id_token)
-    except EmailNotVerifiedError:
-        raise HTTPException(status_code=403, detail="Email not verified")
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
