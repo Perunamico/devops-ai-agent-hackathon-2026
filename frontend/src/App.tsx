@@ -271,6 +271,9 @@ function AuthScreen() {
             <p className="text-sm text-gray-500 leading-relaxed">
               登録したメールアドレスに再設定用のメールを送ります。
             </p>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              メールが迷惑メールに振り分けられることがあります。届かない場合は迷惑メールフォルダをご確認ください。
+            </p>
           </div>
 
           <input
@@ -425,6 +428,9 @@ function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVeri
           <h1 className="text-xl font-bold text-gray-900">メールを確認してください</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
             {auth.email ?? '登録メールアドレス'} に確認メールを送りました。確認が終わるまでペットの登録には進めません。
+          </p>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            メールが迷惑メールに振り分けられることがあります。届かない場合は迷惑メールフォルダをご確認ください。
           </p>
         </div>
 
