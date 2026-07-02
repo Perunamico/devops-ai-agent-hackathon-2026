@@ -1,13 +1,16 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
+  browserSessionPersistence,
   createUserWithEmailAndPassword,
   getAuth,
+  initializeAuth,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signOut,
+  type Auth,
   type User,
 } from 'firebase/auth';
 
@@ -27,14 +30,8 @@ const isConfigured = Boolean(
 );
 
 export async function getFirebaseIdToken(): Promise<string | null> {
-  if (typeof window === 'undefined' || !isConfigured) {
-    return null;
-  }
-
   try {
-    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const user = auth.currentUser;
+    const user = getConfiguredAuth()?.currentUser;
     if (!user) return null;
     return user.getIdToken();
   } catch (error) {
@@ -57,26 +54,13 @@ export interface AuthState {
 }
 
 export async function getAuthState(): Promise<AuthState> {
-  if (typeof window === 'undefined' || !isConfigured) {
-    return {
-      configured: false,
-      signedIn: false,
-      uid: null,
-      isAnonymous: false,
-      email: null,
-      emailVerified: false,
-    };
-  }
-
   try {
-    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
-    const user = auth.currentUser;
-    return authStateFromUser(user);
+    const auth = getConfiguredAuth();
+    return authStateFromUser(auth?.currentUser ?? null);
   } catch (error) {
     console.warn('Failed to resolve auth state.', error);
     return {
-      configured: true,
+      configured: isConfigured,
       signedIn: false,
       uid: null,
       isAnonymous: false,
@@ -86,10 +70,23 @@ export async function getAuthState(): Promise<AuthState> {
   }
 }
 
-function getConfiguredAuth() {
+let _auth: Auth | null = null;
+
+function getConfiguredAuth(): Auth | null {
   if (typeof window === 'undefined' || !isConfigured) return null;
+  if (_auth) return _auth;
   const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-  return getAuth(app);
+  try {
+    // セッション永続化: ログイン状態はタブを閉じるまで（sessionStorage 相当）。
+    // URL を開き直したとき・ブラウザを閉じて再訪したときは必ずログインから始まり、
+    // 過去の訪問で IndexedDB に残った古いセッションも復元しない。
+    // （同じタブ内のリロード・画面遷移ではログインが維持される）
+    _auth = initializeAuth(app, { persistence: browserSessionPersistence });
+  } catch {
+    // 既に初期化済み（HMR 等で二重初期化した場合）は既存インスタンスを使う。
+    _auth = getAuth(app);
+  }
+  return _auth;
 }
 
 function authStateFromUser(user: User | null): AuthState {
@@ -194,11 +191,9 @@ export async function sendPasswordReset(email: string): Promise<void> {
 }
 
 export async function signOutUser(): Promise<void> {
-  if (typeof window === 'undefined' || !isConfigured) return;
-
   try {
-    const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
-    const auth = getAuth(app);
+    const auth = getConfiguredAuth();
+    if (!auth) return;
     await signOut(auth);
   } catch (error) {
     console.warn('Sign-out failed.', error);
