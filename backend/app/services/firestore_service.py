@@ -257,6 +257,19 @@ class FirestoreService:
         public_memory = self.get_public_memory(user_id) or {}
         profiles = private_memory.get("profiles") or []
 
+        # 未確認（未深掘り）のラベルは、カード文言に「（未確認）」を添える。
+        # 会話で深掘りされると profile が置換され unconfirmed が外れてマークも消える。
+        unconfirmed_names = {
+            str(p.get("topic") or "").strip()
+            for p in profiles
+            if p.get("origin") == "label" and p.get("unconfirmed")
+        }
+        unconfirmed_names.discard("")
+
+        def mark(summary: str) -> str:
+            s = str(summary or "").strip()
+            return f"{s}（未確認）" if s in unconfirmed_names else summary
+
         # 公開カードのチップに出す「中身のカテゴリー(category_large)」の対応表。
         # いずれもメモリ保存エージェントが決めたカテゴリーを使う:
         #   - profiles 由来の要約 → そのプロフィールの category_large
@@ -274,7 +287,7 @@ class FirestoreService:
         for index, value in enumerate(public_memory.get("safe_summaries") or []):
             add_item(allowed, seen_allowed, {
                 "id": f"public-safe_summaries-{index}",
-                "summary": value,
+                "summary": mark(value),
                 "detail": "公開要約",
                 "source": "public",
                 "created_at": public_memory.get("updated_at", ""),
@@ -306,7 +319,7 @@ class FirestoreService:
                 shareability = content.get("shareability")
                 item = {
                     "id": _profile_content_id(profile_index, content_index),
-                    "summary": content.get("content") or topic,
+                    "summary": mark(content.get("content") or topic),
                     "detail": category or topic,
                     "source": "private",
                     "created_at": private_memory.get("updated_at", ""),
