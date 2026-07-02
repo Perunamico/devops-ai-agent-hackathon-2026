@@ -92,6 +92,7 @@ def test_resolve_token_matches_when_reverse_match_exists():
         "id": "reverse-record",
         "payload_raw": [9, 8, 7],
     }
+    db.find_active_session_by_pair.return_value = None
     db.create_exchange_session.return_value = "session1"
     db._list.return_value = []
 
@@ -115,6 +116,7 @@ def test_scan_qr_token_matches_and_notifies_owner_poll():
         "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
         "used": False,
     }
+    db.find_active_session_by_pair.return_value = None
     db.create_exchange_session.return_value = "session1"
 
     with patch("app.agents.encounter_agent._run_background_coro") as run_bg:

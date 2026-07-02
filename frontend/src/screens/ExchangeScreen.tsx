@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
 import { useApp } from '../App';
-import { issueToken, resolveExchange, getMatchStatus, getSession, endSession, pollToken, scanQrToken } from '../api';
+import { issueToken, resolveExchange, getMatchStatus, getSession, markSessionReady, endSession, pollToken, scanQrToken } from '../api';
 import { createBroadcastExchange } from '../audio';
 import type { ExchangeTokenResponse, SessionResponse, ResolveStatus } from '../types';
 import styles from './ExchangeScreen.module.css';
@@ -111,6 +111,7 @@ export default function ExchangeScreen() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const qrPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const msgPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const readyPollRef = useRef<ReturnType<typeof setInterval> | null>(null); // 相互確認ゲートのポーリング
   const playingRef = useRef(false);
   const receivedRef = useRef(false); // 相手トークン受信済みフラグ（リスニング停止用）
   const resolvedRef = useRef(false); // 双方照合完了フラグ（送信ループ停止用）
@@ -152,6 +153,7 @@ export default function ExchangeScreen() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (qrPollRef.current) { clearInterval(qrPollRef.current); qrPollRef.current = null; }
     if (msgPollRef.current) { clearInterval(msgPollRef.current); msgPollRef.current = null; }
+    if (readyPollRef.current) { clearInterval(readyPollRef.current); readyPollRef.current = null; }
     playingRef.current = false;
     receivedRef.current = false;
     resolvedRef.current = false;
@@ -374,17 +376,56 @@ export default function ExchangeScreen() {
       if (!document.createElement('video').canPlayType('video/mp4')) {
         setUseExchangeImgFallback(true);
       }
+      // 照合できた時点でマイクは不要。相互確認ゲート中も鳴かせない。
+      listenerRef.current?.stop();
+      listenerRef.current = null;
       const session = await getSession(sessionId);
       setSessionData(session);
       setSessionId(sessionId);
       if (session.analysis_id) setAnalysisId(session.analysis_id);
-      setCurrentExchangeAnim('interact_normal'); // 必ず normal から開始
-      setStep('session_active');  // フレームロード完了後に遷移
-      watchSession(sessionId);
+      // 自分の到達を通知。双方の到達が揃うまで成功画面には遷移しない（片側だけ成功の防止）。
+      await markSessionReady(sessionId);
+      if (session.both_ready) {
+        enterSessionActive(sessionId);
+      } else {
+        startReadyGate(sessionId);
+      }
     } catch {
       setErrorKind('generic');
       setStep('error');
     }
+  }
+
+  // 双方の到達が揃うまで待つ相互確認ゲート。揃ったら成功画面へ遷移する。
+  function startReadyGate(sessionId: string) {
+    setStep('waiting'); // 相手の到達待ち。既存の待機UIを流用する。
+    const startAt = Date.now();
+    readyPollRef.current = setInterval(async () => {
+      if (Date.now() - startAt > WAIT_TIMEOUT_MS) {
+        clearInterval(readyPollRef.current!);
+        readyPollRef.current = null;
+        setStep('failed'); // 相手の到達が確認できなければ双方失敗にする
+        return;
+      }
+      try {
+        const session = await getSession(sessionId);
+        setSessionData(session);
+        if (session.analysis_id) setAnalysisId(session.analysis_id);
+        if (session.both_ready) {
+          clearInterval(readyPollRef.current!);
+          readyPollRef.current = null;
+          enterSessionActive(sessionId);
+        }
+      } catch {
+        // まだ待機中
+      }
+    }, POLL_INTERVAL_MS);
+  }
+
+  function enterSessionActive(sessionId: string) {
+    setCurrentExchangeAnim('interact_normal'); // 必ず normal から開始
+    setStep('session_active');
+    watchSession(sessionId);
   }
 
   // セッション中は message 取得 + 相手のバイバイ検知のため終了まで継続ポーリング

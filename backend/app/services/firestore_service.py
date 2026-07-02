@@ -478,6 +478,8 @@ class FirestoreService:
         data.setdefault("ended_at", None)
         data.setdefault("common_message", None)
         data.setdefault("analysis_id", None)
+        # 相互確認ゲート用: 各ユーザーが「成功画面に到達した」ことを記録する。
+        data.setdefault("ready_user_ids", [])
         self._set("exchange_sessions", session_id, data)
         return session_id
 
@@ -487,6 +489,31 @@ class FirestoreService:
     def update_exchange_session(self, session_id: str, data: dict) -> None:
         existing = self._get("exchange_sessions", session_id) or {}
         self._set("exchange_sessions", session_id, {**existing, **data})
+
+    def find_active_session_by_pair(self, user_x: str, user_y: str) -> dict | None:
+        """このユーザーペアのアクティブなセッションを返す（冪等な get-or-create の土台）。
+
+        同時照合で複数生成されても両側が同一セッションへ収束するよう、created_at 昇順で
+        先頭1件を返す。_list は順序を保証しないため明示的にソートする。
+        """
+        pair = {user_x, user_y}
+        candidates = [
+            s for s in self._list("exchange_sessions")
+            if s.get("status") == "active"
+            and {s.get("user_a_id"), s.get("user_b_id")} == pair
+        ]
+        if not candidates:
+            return None
+        candidates.sort(key=lambda s: s.get("created_at", ""))
+        return candidates[0]
+
+    def mark_session_ready(self, session_id: str, user_id: str) -> None:
+        """セッションの ready_user_ids に user_id を重複なく追加する。"""
+        existing = self._get("exchange_sessions", session_id) or {}
+        ready = list(existing.get("ready_user_ids") or [])
+        if user_id not in ready:
+            ready.append(user_id)
+            self._set("exchange_sessions", session_id, {**existing, "ready_user_ids": ready})
 
     # ---- (旧方式互換: 参加者管理) ----
 

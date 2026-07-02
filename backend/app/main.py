@@ -357,6 +357,16 @@ def get_session(
     return agent.get_session(session_id, uid)
 
 
+@app.post("/exchanges/session/{session_id}/ready")
+def mark_session_ready(
+    session_id: str,
+    uid: str = Depends(require_auth),
+    agent: EncounterAgent = Depends(_encounter),
+):
+    agent.mark_ready(session_id, uid)
+    return {"session_id": session_id, "ready": True}
+
+
 @app.post("/exchanges/session/{session_id}/end")
 def end_session(
     session_id: str,
