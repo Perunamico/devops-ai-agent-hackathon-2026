@@ -238,34 +238,51 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
   if (view === 'landing') {
     return (
       <AuthShell>
-        <div className="space-y-8">
-          <div className="space-y-3 text-center">
-            {/* ホームのペット映像と同じ素材を使い、アプリ本体と第一印象を揃える */}
-            <video src="/movie/normal.mp4" className="landing-pet mx-auto" autoPlay loop muted playsInline />
-            <div className="space-y-2">
-              <h1 className="landing-title">AI Pet</h1>
-              <p className="text-sm text-gray-500 leading-relaxed">
-                話しかけると、あなたの好きなことをおぼえて育つペット。
-                ペットどうしの交流で、相手との共通点も見つかります。
-              </p>
-            </div>
+        <div className="landing-screen">
+          <div className="landing-sign" aria-hidden>
+            <span>✦ ようこそ、あなたのAIペットへ ✦</span>
           </div>
 
-          <div className="space-y-3">
+          <div className="landing-pet-frame">
+            <span className="landing-spark landing-spark--left">✦</span>
+            <span className="landing-spark landing-spark--right">✦</span>
+            {/* ホームのペット映像と同じ素材を使い、アプリ本体と第一印象を揃える */}
+            <video src="/movie/normal.mp4" className="landing-pet" autoPlay loop muted playsInline />
+          </div>
+
+          <div className="landing-copy">
+            <h1 className="landing-title">AI Pet</h1>
+            <p className="landing-description">
+              話しかけると、あなたの好きなことをおぼえて育つペット。
+              ペットどうしの交流で、相手との共通点も見つかります。
+            </p>
+          </div>
+
+          <div className="landing-actions">
             <button
               type="button"
               onClick={() => moveTo('signup')}
-              className="w-full h-14 rounded-full bg-violet-600 text-white font-bold flex items-center justify-center"
+              className="landing-button landing-button--primary"
             >
-              新しくはじめる
+              <span className="landing-button-icon">🐾</span>
+              <span>新しくはじめる</span>
+              <span className="landing-button-spark">✦</span>
             </button>
             <button
               type="button"
               onClick={() => moveTo('signin')}
-              className="w-full h-14 rounded-full bg-gray-100 text-gray-900 font-bold flex items-center justify-center border border-gray-200"
+              className="landing-button landing-button--secondary"
             >
-              ログイン
+              <span className="landing-button-icon landing-button-icon--lock" aria-hidden />
+              <span>ログイン</span>
+              <span className="landing-button-spark">✦</span>
             </button>
+          </div>
+
+          <div className="landing-footer" aria-hidden>
+            <span />
+            <span>🐾</span>
+            <span />
           </div>
         </div>
       </AuthShell>
