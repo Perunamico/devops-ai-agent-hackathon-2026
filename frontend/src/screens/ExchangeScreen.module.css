@@ -1,0 +1,169 @@
+/* 交流中(session_active)画面のスタイル。
+   Issue #98: Tailwind ユーティリティは使わず素の CSS で組む。
+   - 動画は iPhone の横幅いっぱい（1024x1024 の正方形なので aspect-ratio で高さを確保）
+   - 共通メッセージ枠は big_frame.png の 9スライス枠
+   - 「バイバイ」ボタンはより優しいパステル調の色 */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 70vh;
+  gap: 1.25rem;
+  padding: 0 0 1.5rem;
+}
+
+/* 動画エリア: 横幅いっぱい。正方形動画を 2枚重ねてクロスフェードするため
+   aspect-ratio で高さを確保し、各レイヤーは絶対配置で重ねる。 */
+.video {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+}
+
+.videoLayer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: opacity 0.3s ease;
+}
+
+/* 横いっぱいの動画に対し、テキスト・ボタン系は左右に余白を持たせる。 */
+.body {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0 1rem;
+}
+
+/* 共通メッセージ枠: big_frame.png（四隅装飾つき）を 9スライスで伸縮。 */
+.messageFrame {
+  width: 100%;
+  background: #fff;
+  border-radius: 12px;
+  border: 16px solid transparent;
+  border-image-source: url(/icons/big_frame.png);
+  border-image-slice: 300;
+  border-image-width: 16px;
+  border-image-repeat: stretch;
+  padding: 0.5rem 0.75rem 0.75rem;
+  text-align: center;
+}
+
+.messageLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #a78bfa;
+  margin: 0 0 0.25rem;
+}
+
+.messageText {
+  font-size: 1rem;
+  color: #1f2937;
+  margin: 0;
+}
+
+.searching {
+  font-size: 0.875rem;
+  color: #7c3aed;
+  margin: 0;
+  animation: exchangePulse 1.4s ease-in-out infinite;
+}
+
+/* 相手がバイバイした通知 */
+.endedNotice {
+  width: 100%;
+  background: #f9fafb;
+  border-radius: 1rem;
+  padding: 1rem;
+  text-align: center;
+  color: #374151;
+}
+
+/* バイバイボタン: 以前の pink-400→rose-500 より優しいパステルピンクに。 */
+.byeButton {
+  width: 100%;
+  border: none;
+  border-radius: 1rem;
+  padding: 1rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #db2777;
+  background: linear-gradient(135deg, #fce7f3, #fbcfe8);
+  box-shadow: 0 2px 8px rgba(244, 114, 182, 0.25);
+}
+
+/* ホームに戻る（交流終了後のみ表示） */
+.homeButton {
+  width: 100%;
+  border: none;
+  border-radius: 1rem;
+  padding: 0.75rem;
+  font-weight: 500;
+  color: #374151;
+  background: #e5e7eb;
+}
+
+/* バイバイ画像。手を振る絵文字は使わず baibai.png に統一する。 */
+.baibaiInline {
+  display: inline-block;
+  height: 1.4rem;
+  width: auto;
+  vertical-align: middle;
+  margin-left: 0.35rem;
+}
+
+.baibaiHero {
+  width: 96px;
+  height: auto;
+}
+
+.endedScreen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  padding: 0 1.5rem;
+  gap: 1.5rem;
+  text-align: center;
+}
+
+.endedTitle {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 0.5rem;
+}
+
+.endedSub {
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+@keyframes exchangePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* PC（横広）では縦に収まることを優先。スマホは横幅いっぱいのまま、
+   PC は動画の高さを画面高でキャップし、メッセージ枠・ボタンまで 1画面に収める。
+   正方形動画は object-fit:contain で左右レターボックスして中央表示する。 */
+@media (min-width: 768px) {
+  .screen {
+    min-height: 100svh;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem 0;
+  }
+
+  .video {
+    max-height: 50vh;
+  }
+}
