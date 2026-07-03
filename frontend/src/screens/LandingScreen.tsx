@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import type { CSSProperties } from 'react';
+import { TERMS_TEXT, PRIVACY_TEXT } from '../content/legalText';
 
 interface Memory {
   tag: string;
@@ -27,10 +29,23 @@ interface Step {
   body: string;
 }
 
+type LegalKey = 'terms' | 'privacy';
+
 interface FooterLink {
   label: string;
   href: string;
+  key: LegalKey;
 }
+
+const LEGAL_TITLES: Record<LegalKey, string> = {
+  terms: '利用規約',
+  privacy: 'プライバシーポリシー',
+};
+
+const LEGAL_TEXTS: Record<LegalKey, string> = {
+  terms: TERMS_TEXT,
+  privacy: PRIVACY_TEXT,
+};
 
 const MEMORIES: Memory[] = [
   { tag: '映画', tagBg: '#DFF3EF', tagColor: '#1F9E8C', date: '5/12', title: 'SF映画が好き', sub: 'インターステラーが特に印象的', actionIcon: '✓', actionColor: '#1F9E8C' },
@@ -53,13 +68,14 @@ const STEPS: Step[] = [
 ];
 
 const FOOTER_LINKS: FooterLink[] = [
-  { label: 'プライバシーポリシー', href: '/privacy' },
-  { label: '利用規約', href: '/terms' },
+  { label: 'プライバシーポリシー', href: '/privacy', key: 'privacy' },
+  { label: '利用規約', href: '/terms', key: 'terms' },
 ];
 
 const heading: CSSProperties = { fontFamily: "'Zen Kaku Gothic New',sans-serif", fontWeight: 900 };
 
 export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => void; onSignup: () => void }) {
+  const [legalSheet, setLegalSheet] = useState<LegalKey | null>(null);
   return (
     <div className="lp-page" style={{ fontFamily: "'Noto Sans JP',sans-serif", color: '#1F2A44', background: '#fff', WebkitFontSmoothing: 'antialiased' }}>
       <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -334,12 +350,41 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
               {FOOTER_LINKS.map((l) => (
-                <a key={l.href} href={l.href} style={{ textDecoration: 'none', color: '#6B7A96', fontSize: 14, fontWeight: 500 }}>{l.label}</a>
+                <a
+                  key={l.href}
+                  href={l.href}
+                  onClick={(e) => { e.preventDefault(); setLegalSheet(l.key); }}
+                  style={{ textDecoration: 'none', color: '#6B7A96', fontSize: 14, fontWeight: 500, cursor: 'pointer' }}
+                >{l.label}</a>
               ))}
             </div>
           </div>
           <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 var(--lp-pad-x) 32px', color: '#A3B0C8', fontSize: 13 }}>© 2026 Topipet</div>
         </footer>
+
+        {legalSheet && (
+          <div
+            onClick={() => setLegalSheet(null)}
+            style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(31,42,68,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: '#fff', borderRadius: 24, width: '100%', maxWidth: 480, maxHeight: '85svh', display: 'flex', flexDirection: 'column', boxShadow: '0 30px 70px rgba(31,42,68,.3)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid #EEF2FA' }}>
+                <h3 style={{ ...heading, fontSize: 17, margin: 0 }}>{LEGAL_TITLES[legalSheet]}</h3>
+                <button
+                  onClick={() => setLegalSheet(null)}
+                  aria-label="閉じる"
+                  style={{ border: 'none', background: 'transparent', color: '#9AA8C2', fontSize: 24, lineHeight: 1, padding: '0 4px', cursor: 'pointer' }}
+                >×</button>
+              </div>
+              <div style={{ flex: '1 1 auto', minHeight: 0, overflowY: 'auto', padding: '20px 22px' }}>
+                <p style={{ whiteSpace: 'pre-wrap', fontSize: 13.5, lineHeight: 1.85, color: '#43506B', margin: 0 }}>{LEGAL_TEXTS[legalSheet]}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
