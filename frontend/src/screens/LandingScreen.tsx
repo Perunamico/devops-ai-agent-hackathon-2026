@@ -109,8 +109,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
           .lp-page {
             --lp-pad-x: 40px;
             --lp-hero-pad-top: 70px;
-            --lp-hero-cols: 1fr 1fr;
-            --lp-h1-size: 64px;
+            --lp-h1-size: 44px;
             --lp-hero-visual-min-h: 560px;
             --lp-phone-w: 352px;
             --lp-robot-w: 150px;
@@ -123,6 +122,12 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
             --lp-feature-card-w: 280px;
           }
           .lp-nav-links { display: flex; }
+        }
+        @media (min-width: 1100px) {
+          .lp-page {
+            --lp-hero-cols: 1fr 1fr;
+            --lp-h1-size: 48px;
+          }
         }
         @media (max-width: 480px) {
           .lp-star { display: none; }
@@ -191,17 +196,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
             <span style={{ position: 'absolute', top: 8, right: '16%', color: '#7FB0F5', fontSize: 22, animation: 'lp-twinkle 3.6s ease-in-out infinite .9s' }}>✦</span>
 
             <div style={{ position: 'absolute', left: 'var(--lp-robot-left)', bottom: 22, zIndex: 3, animation: 'lp-floaty 5.5s ease-in-out infinite' }}>
-              <div style={{ position: 'relative', width: 'var(--lp-robot-w)' }}>
-                <div style={{ width: 118, height: 96, margin: '0 auto', borderRadius: '38px 38px 30px 30px', background: 'linear-gradient(165deg,#FFFFFF 40%,#DCE9FD)', border: '2px solid #E3EDFB', boxShadow: '0 20px 40px rgba(59,123,240,.22)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ width: 80, height: 52, borderRadius: 26, background: 'linear-gradient(160deg,#2B3A63,#16233F)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, boxShadow: 'inset 0 2px 8px rgba(0,0,0,.4)' }}>
-                    <span style={{ width: 15, height: 15, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%,#8FD0FF,#3B8BF0)', boxShadow: '0 0 10px #4C9BFF' }} />
-                    <span style={{ width: 15, height: 15, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%,#8FD0FF,#3B8BF0)', boxShadow: '0 0 10px #4C9BFF' }} />
-                  </div>
-                </div>
-                <div style={{ width: 96, height: 70, margin: '-6px auto 0', borderRadius: '30px 30px 40px 40px', background: 'linear-gradient(165deg,#FFFFFF 45%,#D3E3FC)', border: '2px solid #E3EDFB', boxShadow: '0 16px 30px rgba(59,123,240,.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ width: 22, height: 22, borderRadius: '50%', background: 'radial-gradient(circle at 40% 35%,#9BD4FF,#2F7FEC)', boxShadow: '0 0 14px #4C9BFF,inset 0 -2px 4px rgba(0,0,0,.15)' }} />
-                </div>
-              </div>
+              <img src="/png/stop.png" alt="Topipet" style={{ width: 'var(--lp-robot-w)', height: 'auto', display: 'block', filter: 'drop-shadow(0 20px 30px rgba(59,123,240,.28))' }} />
             </div>
 
             <div style={{ position: 'relative', zIndex: 2, width: 'var(--lp-phone-w)', borderRadius: 44, background: '#fff', border: '1px solid #E7EEFA', padding: 12, boxShadow: '0 40px 80px rgba(46,86,170,.18),0 8px 24px rgba(46,86,170,.08)' }}>
