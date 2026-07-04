@@ -134,15 +134,9 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
         {/* HEADER */}
         <header style={{ position: 'sticky', top: 0, zIndex: 50, backdropFilter: 'blur(12px)', background: 'rgba(255,255,255,.82)', borderBottom: '1px solid #EDF2FC' }}>
           <div style={{ maxWidth: 1240, margin: '0 auto', padding: '18px var(--lp-pad-x)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 14, background: 'linear-gradient(160deg,#EAF1FF,#D6E5FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 14px rgba(59,123,240,.18)' }}>
-                <div style={{ position: 'relative', width: 26, height: 24, borderRadius: '9px 9px 8px 8px', background: 'linear-gradient(160deg,#fff,#E9F1FF)', border: '1.5px solid #C3D8FB', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3B7BF0' }} />
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3B7BF0' }} />
-                  <span style={{ position: 'absolute', top: -6, left: '50%', transform: 'translateX(-50%)', width: 2, height: 5, background: '#9CC0FA', borderRadius: 2 }} />
-                </div>
-              </div>
-              <span style={{ ...heading, fontSize: 24, letterSpacing: '.01em' }}>Topipet</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img src="/lp/topipet-mark-only.svg" alt="" style={{ height: 40, width: 'auto' }} />
+              <img src="/lp/topipet-wordmark-only.svg" alt="Topipet" style={{ height: 24, width: 'auto' }} />
             </div>
             <nav className="lp-nav-links" style={{ alignItems: 'center', gap: 40 }}>
               <a href="#how" style={{ textDecoration: 'none', color: '#43506B', fontWeight: 700, fontSize: 16 }}>しくみ</a>
@@ -178,7 +172,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
               </span>
             </h1>
             <p style={{ marginTop: 30, fontSize: 18, lineHeight: 1.9, color: '#54617C', fontWeight: 500 }}>
-              あなたのAIペットが、覚えた記憶を安心して管理しながら、<br />友だちとの共通の話題を見つけます。
+              相手との会話のきっかけを提案する、エージェンティックなTopic Petです。あなたの趣味・嗜好を聞き出して、交流した相手との共通点、あなた自身の関心ポイントを教えてくれます。
             </p>
             <div style={{ display: 'flex', gap: 18, marginTop: 40, flexWrap: 'wrap' }}>
               <button onClick={onSignup} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '19px 40px', borderRadius: 16, border: 'none', background: '#3B7BF0', color: '#fff', fontWeight: 700, fontSize: 18, fontFamily: 'inherit', cursor: 'pointer', boxShadow: '0 14px 30px rgba(59,123,240,.34)' }}>
@@ -339,14 +333,9 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
         {/* FOOTER */}
         <footer style={{ borderTop: '1px solid #EDF2FC', background: '#fff' }}>
           <div style={{ maxWidth: 1240, margin: '0 auto', padding: '40px var(--lp-pad-x)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 42, height: 42, borderRadius: 13, background: 'linear-gradient(160deg,#EAF1FF,#D6E5FF)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3B7BF0' }} />
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#3B7BF0' }} />
-                </div>
-              </div>
-              <span style={{ ...heading, fontSize: 21 }}>Topipet</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <img src="/lp/topipet-mark-only.svg" alt="" style={{ height: 34, width: 'auto' }} />
+              <img src="/lp/topipet-wordmark-only.svg" alt="Topipet" style={{ height: 20, width: 'auto' }} />
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 24 }}>
               {FOOTER_LINKS.map((l) => (
