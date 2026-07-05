@@ -9,6 +9,7 @@ import {
   resendVerificationEmail,
   sendPasswordReset,
   signInWithEmail,
+  signInWithGoogle,
   signOutUser,
   subscribeAuthState,
   type AuthState,
@@ -170,6 +171,8 @@ function authErrorMessage(error: unknown): string {
     return 'メールアドレスまたはパスワードが違います。';
   }
   if (code.includes('too-many-requests')) return '試行回数が多すぎます。少し待ってから再試行してください。';
+  if (code.includes('unauthorized-domain')) return 'このURLはGoogleログインの承認済みドメインに登録されていません。';
+  if (code.includes('popup-blocked')) return 'ポップアップがブロックされました。ブラウザの設定を確認してください。';
   return '処理に失敗しました。時間をおいてもう一度試してください。';
 }
 
@@ -188,6 +191,17 @@ function consumeReloginParam(): 'verify' | 'reset' | null {
   return mode;
 }
 
+function GoogleIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+      <path fill="#4285F4" d="M19.6 10.23c0-.68-.06-1.36-.18-2H10v3.79h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.23c1.9-1.75 2.99-4.32 2.99-7.31Z" />
+      <path fill="#34A853" d="M10 20c2.7 0 4.96-.89 6.62-2.42l-3.23-2.5c-.9.6-2.05.95-3.39.95-2.6 0-4.8-1.76-5.59-4.12H1.06v2.59A10 10 0 0 0 10 20Z" />
+      <path fill="#FBBC05" d="M4.41 11.9a6 6 0 0 1 0-3.8V5.5H1.06a10 10 0 0 0 0 9l3.35-2.6Z" />
+      <path fill="#EA4335" d="M10 3.98c1.47 0 2.79.5 3.82 1.5l2.87-2.87A9.6 9.6 0 0 0 10 0a10 10 0 0 0-8.94 5.5l3.35 2.6C5.2 5.74 7.4 3.98 10 3.98Z" />
+    </svg>
+  );
+}
+
 function AuthShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-svh bg-white flex items-center justify-center px-5">
@@ -204,6 +218,7 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState(initialNotice);
 
@@ -211,6 +226,24 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
     setView(nextView);
     setError('');
     setNotice('');
+  }
+
+  async function handleGoogleSignIn() {
+    if (googleSubmitting) return;
+    setGoogleSubmitting(true);
+    setError('');
+    setNotice('');
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
+      // ユーザーが自分でポップアップを閉じた場合はエラー表示しない。
+      if (!code.includes('popup-closed-by-user') && !code.includes('cancelled-popup-request')) {
+        setError(authErrorMessage(err));
+      }
+    } finally {
+      setGoogleSubmitting(false);
+    }
   }
 
   async function handleSubmit(e: FormEvent) {
@@ -285,14 +318,14 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="メールアドレス"
-            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white"
+            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white"
             required
           />
 
           <button
             type="submit"
             disabled={!email.trim() || resetting}
-            className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+            className="w-full h-14 rounded-full bg-sky-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
           >
             {resetting ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : '再設定メールを送る'}
           </button>
@@ -305,7 +338,7 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
           <button
             type="button"
             onClick={() => moveTo('signin')}
-            className="w-full text-sm font-bold text-violet-600"
+            className="w-full text-sm font-bold text-sky-600"
           >
             ログインに戻る
           </button>
@@ -324,6 +357,28 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
           </p>
         </div>
 
+        <button
+          type="button"
+          onClick={() => void handleGoogleSignIn()}
+          disabled={googleSubmitting}
+          className="w-full h-14 rounded-full border border-gray-200 bg-white text-gray-700 font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+        >
+          {googleSubmitting ? (
+            <span className="w-5 h-5 rounded-full border-2 border-gray-300 border-t-transparent animate-spin" />
+          ) : (
+            <>
+              <GoogleIcon />
+              Googleで続ける
+            </>
+          )}
+        </button>
+
+        <div className="flex items-center gap-3 text-xs text-gray-400">
+          <div className="flex-1 h-px bg-gray-200" />
+          または
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
+
         <div className="space-y-3">
           <input
             type="email"
@@ -331,7 +386,7 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="メールアドレス"
-            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white"
+            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white"
             required
           />
           <input
@@ -340,7 +395,7 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="パスワード"
-            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 focus:bg-white"
+            className="w-full bg-gray-100 rounded-full px-5 py-4 border border-gray-200 outline-none text-base text-gray-700 placeholder-gray-400 focus:border-sky-400 focus:ring-2 focus:ring-sky-100 focus:bg-white"
             minLength={6}
             required
           />
@@ -349,7 +404,7 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
         <button
           type="submit"
           disabled={!email.trim() || password.length < 6 || submitting}
-          className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
+          className="w-full h-14 rounded-full bg-sky-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
         >
           {submitting ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : view === 'signup' ? '登録する' : 'ログインする'}
         </button>
@@ -362,21 +417,22 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
               type="button"
               onClick={() => moveTo('reset')}
               disabled={resetting}
-              className="mt-2 text-xs font-bold text-violet-600 disabled:text-gray-300"
+              className="mt-2 text-xs font-bold text-sky-600 disabled:text-gray-300"
             >
               パスワードを忘れた場合
             </button>
           )}
         </div>
 
-        <div className="flex items-center justify-center gap-4 text-sm font-bold text-violet-600">
+        <div className="flex items-center justify-center gap-4 text-sm font-bold">
           <button
             type="button"
             onClick={() => moveTo(view === 'signup' ? 'signin' : 'signup')}
+            className="text-sky-600"
           >
             {view === 'signup' ? 'ログインへ' : '新規登録へ'}
           </button>
-          <button type="button" onClick={() => moveTo('landing')}>
+          <button type="button" onClick={() => moveTo('landing')} className="text-sky-600">
             最初に戻る
           </button>
         </div>
@@ -386,28 +442,28 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
 }
 
 function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVerified: (state: AuthState) => void }) {
-  const [checking, setChecking] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const pollingRef = useRef(false);
 
-  async function handleCheckVerified() {
-    if (checking) return;
-    setChecking(true);
-    setError('');
-    setNotice('');
-    try {
-      const state = await reloadCurrentUser();
-      onVerified(state);
-      if (!state.emailVerified) {
-        setNotice('まだ確認が完了していません。メール内のリンクを開いてからもう一度確認してください。');
+  // メール内のリンクを開いたら自動で本体へ進める。数秒おきに静かに確認するだけで、
+  // ユーザーが手動で「確認できた」と申告する必要はない。
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
+      try {
+        const state = await reloadCurrentUser();
+        if (state.emailVerified) onVerified(state);
+      } catch {
+        // 一時的な通信エラーは無視し、次のポーリングに任せる。
+      } finally {
+        pollingRef.current = false;
       }
-    } catch (err) {
-      setError(authErrorMessage(err));
-    } finally {
-      setChecking(false);
-    }
-  }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [onVerified]);
 
   async function handleResendVerification() {
     if (resending) return;
@@ -427,36 +483,38 @@ function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVeri
   return (
     <AuthShell>
       <div className="space-y-6 text-center">
+        <div className="mx-auto w-16 h-16 rounded-full bg-sky-100 flex items-center justify-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 6h16v12H4z" stroke="#0284c7" strokeWidth="1.6" strokeLinejoin="round" />
+            <path d="m4 7 8 6 8-6" stroke="#0284c7" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+
         <div className="space-y-2">
-          <h1 className="text-xl font-bold text-gray-900">メールを確認してください</h1>
+          <h1 className="text-xl font-bold text-gray-900">確認メールを送信しました</h1>
           <p className="text-sm text-gray-500 leading-relaxed">
-            {auth.email ?? '登録メールアドレス'} の確認がまだ完了していません。登録時に届いた確認メールのリンクを開いてから、「確認できたので続ける」を押してください。
+            {auth.email ?? '登録したメールアドレス'} 宛に確認メールを送りました。メール内のリンクを開くと、このまま自動で続きに進みます。
           </p>
           <p className="text-xs text-gray-400 leading-relaxed">
             メールが迷惑メールに振り分けられることがあります。届かない場合は迷惑メールフォルダをご確認ください。
           </p>
         </div>
 
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={handleCheckVerified}
-            disabled={checking}
-            className="w-full h-14 rounded-full bg-violet-600 text-white font-bold disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center"
-          >
-            {checking ? <span className="w-5 h-5 rounded-full border-2 border-white border-t-transparent animate-spin" /> : '確認できたので続ける'}
-          </button>
-          <button
-            type="button"
-            onClick={handleResendVerification}
-            disabled={resending}
-            className="w-full h-14 rounded-full bg-gray-100 text-gray-900 font-bold border border-gray-200 disabled:text-gray-400"
-          >
-            {resending ? '送信中...' : '確認メールを再送'}
-          </button>
+        <div className="flex items-center justify-center gap-2 text-sm text-gray-400">
+          <span className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-sky-500 animate-spin" />
+          確認を待っています…
         </div>
 
-        <div className="min-h-[52px] text-sm leading-relaxed">
+        <button
+          type="button"
+          onClick={handleResendVerification}
+          disabled={resending}
+          className="w-full h-14 rounded-full bg-gray-100 text-gray-900 font-bold border border-gray-200 disabled:text-gray-400"
+        >
+          {resending ? '送信中...' : '確認メールを再送'}
+        </button>
+
+        <div className="min-h-[24px] text-sm leading-relaxed">
           {error && <p className="text-red-500">{error}</p>}
           {notice && <p className="text-gray-500">{notice}</p>}
         </div>
@@ -464,7 +522,7 @@ function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVeri
         <button
           type="button"
           onClick={() => void signOutUser()}
-          className="text-sm font-bold text-violet-600"
+          className="text-sm font-bold text-sky-600"
         >
           別のアカウントでログイン
         </button>
@@ -476,7 +534,7 @@ function EmailVerificationScreen({ auth, onVerified }: { auth: AuthState; onVeri
 function AuthLoadingScreen() {
   return (
     <div className="min-h-svh bg-white flex items-center justify-center">
-      <span className="w-10 h-10 rounded-full border-4 border-violet-200 border-t-violet-500 animate-spin" />
+      <span className="w-10 h-10 rounded-full border-4 border-sky-200 border-t-sky-500 animate-spin" />
     </div>
   );
 }
