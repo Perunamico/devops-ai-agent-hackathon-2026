@@ -174,7 +174,8 @@ function authErrorMessage(error: unknown): string {
   if (code.includes('too-many-requests')) return '試行回数が多すぎます。少し待ってから再試行してください。';
   if (code.includes('unauthorized-domain')) return 'このURLはGoogleログインの承認済みドメインに登録されていません。';
   if (code.includes('popup-blocked')) return 'ポップアップがブロックされました。ブラウザの設定を確認してください。';
-  return '処理に失敗しました。時間をおいてもう一度試してください。';
+  // 原因調査のため、想定外のエラーは一時的にコードを併記する。
+  return `処理に失敗しました。時間をおいてもう一度試してください。${code ? `(${code})` : ''}`;
 }
 
 type AuthView = 'landing' | 'signin' | 'signup' | 'reset';
