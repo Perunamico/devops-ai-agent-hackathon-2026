@@ -9,6 +9,7 @@ interface Feature {
   title: string;
   body: string;
   imgLabel: string;
+  img?: string;
 }
 
 interface Step {
@@ -37,10 +38,10 @@ const LEGAL_TEXTS: Record<LegalKey, string> = {
 };
 
 const FEATURES: Feature[] = [
-  { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '会話から覚える', body: 'あなたの「好き」や大切なことを、AIペットがそっと覚えます。', imgLabel: '安心設計' },
-  { icon: '✎', iconColor: '#3B7BF0', ring: '#C6DAF9', title: 'プライバシーに配慮', body: '記憶ごとに共有・非共有を選べるから、プライバシーも安心。', imgLabel: '確認フロー' },
-  { icon: '((•))', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '鳴き声で相手と交流', body: '近くの相手とはAIペット同士の鳴き声で交流。話した記憶を交換します。', imgLabel: '鳴き声通信' },
-  { icon: '👥', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '共通の話題を発見', body: '友だちのAIペットとつながり、共通の話題のきっかけを提案。', imgLabel: '話題の発見' },
+  { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '会話から覚える', body: 'あなたの「好き」や大切なことを、AIペットがそっと覚えます。', imgLabel: '安心設計', img: '/lp/chat.PNG' },
+  { icon: '✎', iconColor: '#3B7BF0', ring: '#C6DAF9', title: 'プライバシーに配慮', body: '記憶ごとに共有・非共有を選べるから、プライバシーも安心。', imgLabel: '確認フロー', img: '/lp/privacy.PNG' },
+  { icon: '((•))', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '鳴き声で相手と交流', body: '近くの相手とはAIペット同士の鳴き声で交流。話した記憶を交換します。', imgLabel: '鳴き声通信', img: '/lp/bark.PNG' },
+  { icon: '👥', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '共通の話題を発見', body: '友だちのAIペットとつながり、共通の話題のきっかけを提案。', imgLabel: '話題の発見', img: '/lp/interact.PNG' },
   { icon: '💡', iconColor: '#F0A93B', ring: '#F7DFB4', title: '話題のヒントを提案', body: 'AIペットが会話のきっかけになりそうな話題をそっと提案します。', imgLabel: '提案カード' },
   { icon: '🌱', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '育つほど、深まる関係', body: '記憶が増えるほど、AIペットとの会話も、友だちとの関係も深まっていきます。', imgLabel: '育成イメージ' },
 ];
@@ -195,14 +196,18 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
         {/* FEATURE CARDS */}
         <section id="features" style={{ padding: '20px 0 90px' }}>
           <div style={{ maxWidth: 1240, margin: '0 auto', padding: '0 var(--lp-pad-x)', marginBottom: 28 }}>
-            <h2 style={{ ...heading, fontSize: 'var(--lp-h2-size)', lineHeight: 1.3 }}>安心して覚える、いくつもの理由</h2>
+            <h2 style={{ ...heading, fontSize: 'var(--lp-h2-size)', lineHeight: 1.3 }}>Topipetでできること</h2>
           </div>
           <div className="lp-scroll" style={{ display: 'flex', gap: 20, overflowX: 'auto', scrollSnapType: 'x mandatory', padding: '4px var(--lp-pad-x) 12px' }}>
             {FEATURES.map((f) => (
               <div key={f.title} style={{ flex: '0 0 var(--lp-feature-card-w)', scrollSnapAlign: 'start', background: '#fff', border: '1px solid #EAF0FB', borderRadius: 24, padding: 24, boxShadow: '0 10px 30px rgba(46,86,170,.06)' }}>
-                <div style={{ width: '100%', aspectRatio: '4/3', borderRadius: 16, background: 'repeating-linear-gradient(135deg,#EEF4FF 0 14px,#E6EFFD 14px 28px)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
-                  <span style={{ fontFamily: "'Courier New',monospace", fontSize: 12, color: '#8AA0C6', letterSpacing: '.03em' }}>{f.imgLabel}の画像</span>
-                </div>
+                {f.img ? (
+                  <img src={f.img} alt={f.title} style={{ width: '100%', aspectRatio: '9/16', objectFit: 'contain', borderRadius: 16, background: '#F7FAFF', marginBottom: 20 }} />
+                ) : (
+                  <div style={{ width: '100%', aspectRatio: '4/3', borderRadius: 16, background: 'repeating-linear-gradient(135deg,#EEF4FF 0 14px,#E6EFFD 14px 28px)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+                    <span style={{ fontFamily: "'Courier New',monospace", fontSize: 12, color: '#8AA0C6', letterSpacing: '.03em' }}>{f.imgLabel}の画像</span>
+                  </div>
+                )}
                 <div style={{ width: 50, height: 50, borderRadius: '50%', border: `2px solid ${f.ring}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: f.iconColor, marginBottom: 16 }}>{f.icon}</div>
                 <h3 style={{ ...heading, fontSize: 19, marginBottom: 10 }}>{f.title}</h3>
                 <p style={{ color: '#5B6882', fontSize: 14.5, lineHeight: 1.8, fontWeight: 500 }}>{f.body}</p>
