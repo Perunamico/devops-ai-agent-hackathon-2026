@@ -200,7 +200,7 @@ export default function FriendsScreen() {
                 style={{
                   fontSize: 15, fontWeight: 700, color: '#5b84f0', letterSpacing: 2,
                   // ボタン中央よりやや浮かせて、キラキラの分だけ1文字ぶん後ろにずらす。
-                  position: 'relative', top: '-0.5em', left: '1em',
+                  position: 'relative', top: '-0.25em', left: '1em',
                 }}
               >
                 話題を見る
