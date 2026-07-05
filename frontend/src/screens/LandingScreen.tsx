@@ -38,7 +38,7 @@ const LEGAL_TEXTS: Record<LegalKey, string> = {
 };
 
 const FEATURES: Feature[] = [
-  { icon: '🏷', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '趣味ラベル選択', body: 'まずはルールベースで、自覚のある趣味・嗜好をラベルから登録。', imgLabel: 'ラベル選択' },
+  { icon: '🏷', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '趣味ラベル選択', body: 'まずはルールベースで、自覚のある趣味・嗜好をラベルから登録。', imgLabel: 'ラベル選択', img: '/lp/labels.PNG' },
   { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '会話から覚える', body: '会話の中から「好き」を見つけて整理し、AIペットがそっと覚えます。', imgLabel: '安心設計', img: '/lp/chat.PNG' },
   { icon: '✎', iconColor: '#3B7BF0', ring: '#C6DAF9', title: 'プライバシーに配慮', body: '記憶ごとに共有・非共有を選べるから、プライバシーも安心。', imgLabel: '確認フロー', img: '/lp/privacy.PNG' },
   { icon: '((•))', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '鳴き声で相手と交流', body: '近くの相手とはAIペット同士の鳴き声で交流。話した記憶を交換します。', imgLabel: '鳴き声通信', img: '/lp/bark.PNG' },
