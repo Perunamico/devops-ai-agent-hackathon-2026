@@ -133,7 +133,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
         </header>
 
         {/* HERO */}
-        <section style={{ maxWidth: 1240, margin: '0 auto', padding: 'var(--lp-hero-pad-top) var(--lp-pad-x) 40px', display: 'grid', gridTemplateColumns: 'var(--lp-hero-cols)', gap: 48, alignItems: 'center' }}>
+        <section style={{ maxWidth: 1240, margin: '0 auto', padding: 'var(--lp-hero-pad-top) var(--lp-pad-x) 40px', display: 'grid', gridTemplateColumns: 'var(--lp-hero-cols)', gap: 48, alignItems: 'start' }}>
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '11px 22px', borderRadius: 999, background: '#fff', border: '1.5px solid #DCE8FC', boxShadow: '0 6px 18px rgba(59,123,240,.08)', marginBottom: 36 }}>
               <span style={{ color: '#3B7BF0', fontSize: 14 }}>✦</span>
