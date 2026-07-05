@@ -104,7 +104,7 @@ Authorization: Bearer dev-token
 
 ###
 
-### 13. Submit Feedback (LLM4 memory update)
+### 13. Submit Feedback (memory update)
 POST http://localhost:8080/reports/ANALYSIS_ID_HERE/feedback
 Authorization: Bearer dev-token
 Content-Type: application/json
