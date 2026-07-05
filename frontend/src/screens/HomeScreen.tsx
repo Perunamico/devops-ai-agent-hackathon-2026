@@ -4,6 +4,11 @@ import { sendChat, getReviewItems, createPet, putSelectedLabels } from '../api';
 
 const NAME_MAX = 12;
 
+// タブ（ブラウザセッション）内で一度でも発話したかを sessionStorage で保持する。
+// タブを閉じると消えるため、開き直し後の最初の発話は session_start としてバックエンドに伝え、
+// 直前の会話を引き継がず新しい会話として始めてもらう。ページ遷移・リロードでは維持される。
+const CHAT_SESSION_KEY = 'chat-session-started';
+
 type AnimName = 'hand' | 'stretch' | 'hand_stretch' | 'blink' | 'shake';
 
 const ANIM_CONFIG: Record<AnimName, { minLoops: number; noConsecutive: boolean }> = {
@@ -228,7 +233,10 @@ export default function HomeScreen() {
     setSubmitting(true);
 
     try {
-      const result = await sendChat({ message });
+      const sessionStart = sessionStorage.getItem(CHAT_SESSION_KEY) === null;
+      const result = await sendChat({ message, session_start: sessionStart });
+      // 送信が失敗したら未セットのままにして、次の発話でも session_start として送る。
+      sessionStorage.setItem(CHAT_SESSION_KEY, '1');
       setPetBubble(result.reply);
       setContent('');
       if (result.memory?.category === 'review_required') {

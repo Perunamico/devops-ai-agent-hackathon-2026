@@ -8,8 +8,8 @@ from app.services.vertex_ai_service import VertexAIService
 
 logger = logging.getLogger(__name__)
 
-# 記憶要約を注入するタイミングの調整パラメータ。
-SESSION_GAP_MINUTES = 30  # 直近発話からこれ以上空いたら新しい会話の冒頭とみなす
+# 会話セッションの区切りと記憶要約を注入するタイミングの調整パラメータ。
+SESSION_GAP_MINUTES = 30  # 直近発話からこれ以上空いたら新しい会話の冒頭とみなす（履歴を引き継がず、記憶要約を注入）
 REINJECT_EVERY_TURNS = 6  # 会話が長引いたら、この往復数ごとに記憶要約を再注入する
 _MAX_MEMORY_PROFILES = 20  # 1回に載せるプロフィール数の上限
 _MAX_PROBE_LABELS = 8  # 初回の話題出し候補として載せる未確認ラベル数の上限
@@ -121,11 +121,21 @@ class ConversationAgent:
         self._ai = vertex_ai
         self._db = firestore
 
-    def chat(self, user_id: str, message: str) -> ChatResponse:
+    def chat(self, user_id: str, message: str, session_start: bool = False) -> ChatResponse:
         pet = self._db.get_pet_by_user(user_id) or {}
         history = self._db.get_recent_chat_messages(user_id)
 
-        memory_summary = self._build_memory_summary(user_id, history)
+        # 新しい会話の冒頭（タブの開き直し or 直近発話から時間が空いた）では、
+        # 直前の会話履歴を引き継がず、代わりに記憶要約を必ず注入する。
+        last_created_at = history[-1].get("created_at") if history else None
+        new_session = session_start or _is_new_session(
+            last_created_at, datetime.now(timezone.utc)
+        )
+        memory_summary = self._build_memory_summary(
+            user_id, last_created_at, force=new_session
+        )
+        if new_session:
+            history = []
         first_probe = self._build_first_probe(user_id)
 
         response = self._generate_reply(message, pet, history, memory_summary, first_probe)
@@ -136,15 +146,18 @@ class ConversationAgent:
         })
         return response
 
-    def _build_memory_summary(self, user_id: str, history: list[dict]) -> str:
+    def _build_memory_summary(
+        self, user_id: str, last_created_at: str | None, force: bool = False
+    ) -> str:
         """会話の冒頭・長引いた時だけ、蓄積した記憶（private profiles）の要約を返す。
 
         それ以外のターンは空文字を返し、プロンプトに記憶セクションを載せない。
+        force=True（新しい会話の冒頭）のときは判定を省いて必ず返す。
         """
-        turn_count = self._db.count_chat_messages(user_id)
-        last_created_at = history[-1].get("created_at") if history else None
-        if not _should_inject_memory(turn_count, last_created_at, datetime.now(timezone.utc)):
-            return ""
+        if not force:
+            turn_count = self._db.count_chat_messages(user_id)
+            if not _should_inject_memory(turn_count, last_created_at, datetime.now(timezone.utc)):
+                return ""
         private = self._db.get_private_memory(user_id) or {}
         return _render_memory_summary(private)
 
@@ -222,6 +235,17 @@ def _trim_reply(text: str, limit: int = _REPLY_MAX_CHARS) -> str:
     return text
 
 
+def _is_new_session(last_created_at: str | None, now: datetime) -> bool:
+    """直近発話から SESSION_GAP_MINUTES 以上空いたら新しい会話の冒頭とみなす（純粋関数）。
+
+    直近発話が無い・時刻が読めない場合は False（判断材料が無いので区切らない）。
+    """
+    last = _parse_iso(last_created_at)
+    if last is None:
+        return False
+    return now - last >= timedelta(minutes=SESSION_GAP_MINUTES)
+
+
 def _should_inject_memory(
     turn_count: int, last_created_at: str | None, now: datetime
 ) -> bool:
@@ -235,10 +259,8 @@ def _should_inject_memory(
     if turn_count <= 0:
         return True
 
-    last = _parse_iso(last_created_at)
-    if last is not None:
-        if now - last >= timedelta(minutes=SESSION_GAP_MINUTES):
-            return True
+    if _is_new_session(last_created_at, now):
+        return True
 
     return turn_count % REINJECT_EVERY_TURNS == 0
 
