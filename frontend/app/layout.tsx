@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import '../src/index.css';
 
 export const metadata: Metadata = {
-  title: 'AI Pet',
+  title: 'Topipet',
   description: 'AIペット同士が共通の話題を見つける会話支援アプリ',
 };
 

@@ -130,6 +130,9 @@ class PreferenceProfile(BaseModel):
     # preference（好き/嫌いの向き）とは独立に「どのくらい好きか」の強さを表す。
     intensity: Literal["low", "medium", "high"] = "medium"
     contents: list[ContentItem] = []
+    # 既存プロフィールが unconfirmed（ラベル由来で未深掘り）だった場合のみ意味を持つ一時的な信号。
+    # true のときだけ、そのプロフィールの unconfirmed を外してよい。マージ後は永続化しない。
+    depth_confirmed: bool = False
 
 
 class MemoryClassifyResult(BaseModel):

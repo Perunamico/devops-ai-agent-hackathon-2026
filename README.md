@@ -16,33 +16,33 @@ PR の動作確認用 Preview URL は、各 PR の `Deploy Preview` コメント
 | ファイル | 内容 |
 |---------|------|
 | [docs/agent_role.md](docs/agent_role.md) | AIペットの役割・記憶分類・口調仕様 |
-| [docs/flow.md](docs/flow.md) | 全フロー図（初期設定〜交流履歴まで7フロー + ERD） |
+| [docs/flow.md](docs/flow.md) | 全フロー図（初期設定〜交流履歴まで + ERD） |
 | [docs/stack.md](docs/stack.md) | 技術スタック・Docker構成仕様 |
 | [docs/frontend.md](docs/frontend.md) | フロントエンド構成・画面仕様・音声通信実装 |
 | [docs/deploy.md](docs/deploy.md) | Google Cloud / Firebase への手動デプロイ手順 |
+| [docs/cicd-deploy.md](docs/cicd-deploy.md) | GitHub Actions による自動デプロイ（CI/CD）構成 |
 
 ---
 
 ## アーキテクチャ概要
 
 ```
+雑談チャット → ConversationAgent → ペットの応答（応答後に記憶を再分類）
 ユーザー入力 → MemoryAgent(LLM1) → Private / Public / Blocked / Review Required
                                            ↓
-交換イベント → EncounterAgent(LLM2) → 共通点分析
+鳴き声/QR交換 → EncounterAgent(LLM2) → 共通点分析・交流メッセージ
                                            ↓
                TopicAgent(LLM3) → その場カード / 帰宅後レポート
-                                           ↓
-カード反応   → MemoryAgent(LLM4) → 記憶更新（ペットが育つ）
 ```
 
-### 4つのLLM処理
+### LLM処理
 
-| # | Agent | 処理内容 |
-|---|-------|---------|
-| LLM1 | MemoryAgent | ユーザー入力 → Private / Public / Blocked / ReviewRequired に分類 |
-| LLM2 | EncounterAgent | 2ユーザーのPublic Memoryを照合 → 共通点・会話のきっかけを抽出 |
-| LLM3 | TopicAgent | 交流分析 → その場カード（3枚）と帰宅後レポート（6種）を生成 |
-| LLM4 | MemoryAgent | カードへの反応 → 記憶を更新してペットを育てる |
+| Agent | 処理内容 |
+|-------|---------|
+| ConversationAgent | ペットとの雑談チャット応答を生成。応答後に記憶の再分類をバックグラウンド実行 |
+| MemoryAgent (LLM1) | ユーザー入力 → Private / Public / Blocked / ReviewRequired に分類。カードへの反応による記憶更新も担当 |
+| EncounterAgent (LLM2) | 2ユーザーのPublic Memoryを照合 → 共通点・交流メッセージを抽出（マッチ成立時に非同期実行） |
+| TopicAgent (LLM3) | 交流分析 → その場カード（3枚）と帰宅後レポート（6種）を生成 |
 
 ---
 
@@ -68,29 +68,38 @@ PR の動作確認用 Preview URL は、各 PR の `Deploy Preview` コメント
 │   ├── agent_role.md          # AIペットの役割・口調仕様
 │   ├── flow.md                # 全フロー図（Mermaid）
 │   ├── stack.md               # 技術スタック・Docker仕様
-│   └── frontend.md            # フロントエンド構成・音声通信仕様
+│   ├── frontend.md            # フロントエンド構成・音声通信仕様
+│   ├── deploy.md              # 手動デプロイ手順
+│   └── cicd-deploy.md         # CI/CD 自動デプロイ構成
 ├── frontend/                  # Next.js + React フロントエンド
 │   ├── app/                   # App Router エントリポイント
+│   ├── public/                # 静的アセット
 │   ├── src/
 │   │   ├── App.tsx            # 画面状態管理・BottomNav
 │   │   ├── types.ts           # バックエンドスキーマ対応型定義
 │   │   ├── api.ts             # 全APIクライアント関数
 │   │   ├── audio.ts           # 鳴き声通信（Web Audio API + FFT）
-│   │   └── screens/           # 6画面コンポーネント
+│   │   ├── firebase.ts        # Firebase Auth 初期化
+│   │   ├── assets/            # 画像・アニメーション素材
+│   │   ├── content/           # 文言・コンテンツ定義
+│   │   ├── data/              # 静的データ
+│   │   └── screens/           # 10画面コンポーネント
 │   ├── package.json
 │   └── next.config.ts         # Firebase Hosting 用 static export
 └── backend/
     ├── Dockerfile             # python:3.12-slim、PORT=8080
     ├── .env.example           # 環境変数テンプレート
     ├── requirements.txt
-    ├── sample_requests.http   # E2Eテスト用HTTPリクエスト集
+    ├── requirements-dev.txt   # テスト用依存（pytest, httpx）
+    ├── sample_requests.http   # 動作確認用HTTPリクエスト集
     ├── app/
-    │   ├── main.py            # FastAPI app + 全12エンドポイント
+    │   ├── main.py            # FastAPI app + 全23エンドポイント
     │   ├── config.py          # 環境変数設定 (pydantic-settings)
     │   ├── agents/
-    │   │   ├── memory_agent.py      # LLM1 + LLM4
-    │   │   ├── pet_persona_agent.py # LLM1（初期プロフィール抽出）
-    │   │   ├── encounter_agent.py   # LLM2 + トークン発行
+    │   │   ├── conversation_agent.py # 雑談チャット応答
+    │   │   ├── memory_agent.py      # LLM1（記憶分類・記憶更新）
+    │   │   ├── pet_persona_agent.py # 初期プロフィール抽出（現在未使用）
+    │   │   ├── encounter_agent.py   # LLM2 + トークン発行・マッチング
     │   │   └── topic_agent.py       # LLM3（カード・レポート生成）
     │   ├── services/
     │   │   ├── vertex_ai_service.py # Gemini呼び出し（JSON強制、3リトライ）
@@ -99,7 +108,8 @@ PR の動作確認用 Preview URL は、各 PR の `Deploy Preview` コメント
     │   ├── schemas/
     │   │   ├── pet.py
     │   │   ├── memory.py
-    │   │   └── encounter.py
+    │   │   ├── encounter.py
+    │   │   └── chat.py
     │   └── utils/
     │       ├── json_utils.py
     │       └── rule_filter.py
@@ -123,7 +133,6 @@ PR の動作確認用 Preview URL は、各 PR の `Deploy Preview` コメント
 ```bash
 git clone https://github.com/Perunamico/devops-ai-agent-hackathon-2026.git
 cd devops-ai-agent-hackathon-2026
-git checkout feature/ai-pet-backend
 ```
 
 **2. 環境変数ファイルを作成**
@@ -188,20 +197,50 @@ docker run -p 8080:8080 --env-file .env ai-pet-api
 
 ## APIエンドポイント一覧
 
-| Method | Path | 認証 | 説明 |
-|--------|------|------|------|
-| GET | `/health` | なし | ヘルスチェック |
-| POST | `/pets` | 必須 | ペット作成（LLM1で初期プロフィール抽出） |
-| POST | `/inputs` | 必須 | ユーザー入力→記憶分類（LLM1） |
-| GET | `/memories/public` | 必須 | 自分の公開プロフィールを確認 |
-| GET | `/memories/review` | 必須 | 確認待ちの記憶一覧を取得 |
-| PUT | `/memories/{id}/approve` | 必須 | 記憶の公開・非公開を決定 |
-| POST | `/exchanges/token` | 必須 | 交換トークン発行（超音波 + QR用） |
-| POST | `/exchanges/join` | 必須 | トークンを使って交換セッションに参加 |
-| POST | `/exchanges/{id}/approve` | 必須 | 交換を承認（双方承認でLLM2実行） |
-| GET | `/exchanges/{id}/analysis` | 必須 | 共通点分析結果を取得 |
-| GET | `/reports/{id}` | 必須 | 帰宅後レポート取得（初回アクセス時にLLM3実行） |
-| POST | `/reports/{id}/feedback` | 必須 | カードへの反応を送信（LLM4で記憶更新） |
+`GET /health` 以外はすべて認証必須です。
+
+### ペット・チャット
+
+| Method | Path | 説明 |
+|--------|------|------|
+| GET | `/health` | ヘルスチェック（認証不要） |
+| POST | `/pets` | ペット作成（名前・性格・口調を保存） |
+| GET | `/pets/me` | 自分のペット情報を取得 |
+| POST | `/chat` | ペットとの雑談。応答後に記憶の再分類を非同期実行 |
+| POST | `/inputs` | ユーザー入力→記憶分類（LLM1） |
+
+### 記憶
+
+| Method | Path | 説明 |
+|--------|------|------|
+| GET | `/memories` | 記憶一覧（review / allowed / secret） |
+| GET | `/memories/public` | 自分の公開プロフィールを確認 |
+| GET | `/memories/review` | 確認待ちの記憶一覧を取得 |
+| PUT | `/memories/{id}/approve` | 記憶の公開・非公開を決定 |
+| GET | `/memories/labels` | 選択済みの興味ラベルを取得 |
+| PUT | `/memories/labels` | 興味ラベルを更新（最大30件） |
+
+### 交換（鳴き声 / QR）
+
+| Method | Path | 説明 |
+|--------|------|------|
+| POST | `/exchanges/token` | 交換トークン発行（超音波 + QR用） |
+| POST | `/exchanges/resolve` | 受信した鳴き声トークンを解決してマッチング |
+| GET | `/exchanges/match/{pending_id}` | マッチ成立をポーリング（受信側） |
+| GET | `/exchanges/token/{token_key}/poll` | マッチ成立をポーリング（発行側） |
+| POST | `/exchanges/qr-scan/{token_key}` | QRスキャンで交換セッションに参加 |
+| GET | `/exchanges/session/{session_id}` | 交換セッションの状態を取得 |
+| POST | `/exchanges/session/{session_id}/ready` | 交流開始の準備完了を通知 |
+| POST | `/exchanges/session/{session_id}/end` | 交流セッションを終了 |
+| GET | `/exchanges/{session_id}/analysis` | 共通点分析結果を取得（分析はマッチ成立時にLLM2が非同期実行） |
+
+### 友達・レポート
+
+| Method | Path | 説明 |
+|--------|------|------|
+| GET | `/friends` | 交流が成立した相手の一覧を取得 |
+| GET | `/reports/{analysis_id}` | 帰宅後レポート取得（初回アクセス時にLLM3実行） |
+| POST | `/reports/{analysis_id}/feedback` | カードへの反応を送信（記憶更新） |
 
 ### 認証ヘッダー
 
@@ -213,62 +252,35 @@ Authorization: Bearer <Firebase ID Token>
 
 ---
 
-## E2Eテスト手順
-
-`backend/sample_requests.http` に全シーケンスが記載されています。VS Code の [REST Client](https://marketplace.visualstudio.com/items?itemName=humao.rest-client) 拡張で実行できます。
-
-手動 curl の場合:
-
-```bash
-BASE=http://localhost:8080
-AUTH="Authorization: Bearer dev-token"
-
-# 1. ペット作成
-curl -s -X POST $BASE/pets -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"name":"ポチ","personality":"好奇心旺盛","tone":"やわらかい短文"}' | jq .
-
-# 2. 入力を投稿（LLM1で記憶分類）
-curl -s -X POST $BASE/inputs -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"input_type":"chat","content":"最近カフェで作業するのにはまってる"}' | jq .
-# → {"category":"public","safe_summary":"カフェでの作業が好き",...}
-
-# 3. 交換トークン発行
-TOKEN=$(curl -s -X POST $BASE/exchanges/token -H "$AUTH" | jq -r .token)
-
-# 4. 交換セッションに参加
-SESSION=$(curl -s -X POST $BASE/exchanges/join -H "$AUTH" \
-  -H "Content-Type: application/json" \
-  -d "{\"token\":\"$TOKEN\",\"exchange_method\":\"qr_fallback\"}" | jq -r .session_id)
-
-# 5. 承認（双方承認でLLM2実行）
-RESULT=$(curl -s -X POST $BASE/exchanges/$SESSION/approve -H "$AUTH" \
-  -H "Content-Type: application/json" -d '{"approved":true}')
-ANALYSIS_ID=$(echo $RESULT | jq -r .analysis_id)
-
-# 6. 帰宅後レポート取得（初回アクセス時にLLM3実行）
-curl -s $BASE/reports/$ANALYSIS_ID -H "$AUTH" | jq .
-```
-
----
-
 ## 単体テスト
 
 ```bash
 cd backend
-pip install pytest pytest-asyncio httpx
+pip install -r requirements-dev.txt
 pytest tests/ -v
 ```
 
-| ファイル | テストケース |
-|---------|------------|
-| `test_health.py` | `GET /health` → 200 OK |
-| `test_memory_agent.py` | 電話番号→blocked、カフェ→public、LLMエラー→privateフォールバック |
-| `test_encounter_agent.py` | トークン発行、期限切れ（410）、双方承認でLLM2実行 |
-| `test_topic_agent.py` | その場カード3枚生成、帰宅後レポート6種類生成 |
+| ファイル | 対象 |
+|---------|------|
+| `test_health.py` | ヘルスチェック |
+| `test_conversation_agent.py` | 雑談チャット応答 |
+| `test_memory_agent.py` | 記憶分類（blocked / public / フォールバック） |
+| `test_encounter_agent.py` | トークン発行・マッチング・共通点分析 |
+| `test_encounter_mutual_ready.py` | 双方 ready 時のセッション遷移 |
+| `test_topic_agent.py` | その場カード・帰宅後レポート生成 |
+| `test_firestore_memory_list.py` | 記憶一覧の取得 |
+| `test_firestore_service_safety.py` | Firestore アクセスの安全性 |
+| `test_friends.py` | 友達一覧 |
+| `test_report_authorization.py` | レポートの認可チェック |
+| `test_token_service.py` | 認証・超音波トークンエンコード |
 
 ---
 
-## Cloud Run デプロイ
+## デプロイ
+
+`main` / `dev` への push で GitHub Actions が自動デプロイします（[docs/cicd-deploy.md](docs/cicd-deploy.md) 参照）。
+
+手動で Cloud Run へデプロイする場合（詳細は [docs/deploy.md](docs/deploy.md)）:
 
 ```bash
 PROJECT=your-project-id
@@ -298,7 +310,9 @@ gcloud run deploy ai-pet-api \
 | `GEMINI_MODEL` | `gemini-2.5-flash` | 使用するモデル名 |
 | `FIRESTORE_DATABASE` | `(default)` | Firestore データベース名 |
 | `FIRESTORE_ENABLED` | `true` | `false` にするとインメモリで動作（ローカル開発用） |
+| `FIREBASE_PROJECT_ID` | なし | Firebase Auth のプロジェクト ID |
 | `SKIP_AUTH` | `false` | `true` にすると Firebase Auth を省略（ローカル開発用） |
+| `LOG_LEVEL` | `INFO` | ログレベル |
 
 ---
 
@@ -306,10 +320,9 @@ gcloud run deploy ai-pet-api \
 
 | ブランチ | 内容 |
 |---------|------|
-| `main` | 本番ブランチ |
-| `feature/ai-pet-backend` | バックエンド + フロントエンド実装（本ブランチ） |
-| `feature/gemini-chat` | シンプルなGemini chatサンプル |
-| `feature/agent-test` | エージェントランタイムの実験 |
+| `main` | 本番ブランチ。push / merge で本番環境へ自動デプロイ |
+| `dev` | 開発ブランチ。push / merge で開発環境へ自動デプロイ |
+| `feature/*` | 作業ブランチ。`dev` へ push で反映し、`main` へは PR 経由で反映 |
 
 ---
 
@@ -317,12 +330,11 @@ gcloud run deploy ai-pet-api \
 
 GitHub Actions で以下を自動実行します。
 
-* frontend: `npm ci`, `npm run lint`, `npm run build`
-* backend: `pip install -r requirements-dev.txt`, `pytest -q`
-
-対象イベント:
-
-* `main` / `dev` 向け Pull Request
-* `main` / `dev` / `feature/**` への push
-
-今後 CD まで進める場合は、Firebase Hosting と Cloud Run のデプロイ先、GitHub Secrets、デプロイ対象ブランチを決める必要があります。
+* CI
+  * frontend: `npm ci`, `npm run lint`, `npm run build`
+  * backend: `pip install -r requirements-dev.txt`, `pytest -q`
+  * 対象: `main` / `dev` 向け Pull Request、`main` / `dev` / `feature/**` への push
+* CD
+  * `main` / `dev` への push で Firebase Hosting + Cloud Run へ自動デプロイ
+  * Pull Request では Preview 環境（Hosting Preview Channel + PR 専用 Cloud Run）を作成
+  * 構成の詳細は [docs/cicd-deploy.md](docs/cicd-deploy.md) を参照

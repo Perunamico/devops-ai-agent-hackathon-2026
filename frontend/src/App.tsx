@@ -22,6 +22,7 @@ import PetExchangeScreen from './screens/PetExchangeScreen';
 import FriendsScreen from './screens/FriendsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import LabelSelectScreen from './screens/LabelSelectScreen';
+import LandingScreen from './screens/LandingScreen';
 
 type Screen = 'home' | 'review' | 'exchange' | 'analysis' | 'report' | 'petexchange' | 'friends' | 'settings';
 type ExchangeSetupStep = null | 'mic' | 'requesting_mic' | 'volume';
@@ -128,7 +129,24 @@ function TopNav() {
           <div className="relative">
             <img src={item.iconImg} className="w-8 h-8 object-contain" alt={item.label} />
             {item.screen === 'review' && reviewCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+              <span
+                style={{
+                  position: 'absolute',
+                  top: -4,
+                  right: -4,
+                  minWidth: 16,
+                  height: 16,
+                  padding: '0 2px',
+                  borderRadius: 9999,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  color: '#fff',
+                  background: '#4670e6',
+                }}
+              >
                 {reviewCount}
               </span>
             )}
@@ -237,55 +255,10 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
 
   if (view === 'landing') {
     return (
-      <AuthShell>
-        <div className="landing-screen">
-          <div className="landing-sign" aria-hidden>
-            <span>✦ ようこそ、あなたのAIペットへ ✦</span>
-          </div>
-
-          <div className="landing-pet-frame">
-            <span className="landing-spark landing-spark--left">✦</span>
-            <span className="landing-spark landing-spark--right">✦</span>
-            {/* ホームのペット映像と同じ素材を使い、アプリ本体と第一印象を揃える */}
-            <video src="/movie/normal.mp4" className="landing-pet" autoPlay loop muted playsInline />
-          </div>
-
-          <div className="landing-copy">
-            <h1 className="landing-title">AI Pet</h1>
-            <p className="landing-description">
-              話しかけると、あなたの好きなことをおぼえて育つペット。
-              ペットどうしの交流で、相手との共通点も見つかります。
-            </p>
-          </div>
-
-          <div className="landing-actions">
-            <button
-              type="button"
-              onClick={() => moveTo('signup')}
-              className="landing-button landing-button--primary"
-            >
-              <span className="landing-button-icon">🐾</span>
-              <span>新しくはじめる</span>
-              <span className="landing-button-spark">✦</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => moveTo('signin')}
-              className="landing-button landing-button--secondary"
-            >
-              <span className="landing-button-icon landing-button-icon--lock" aria-hidden />
-              <span>ログイン</span>
-              <span className="landing-button-spark">✦</span>
-            </button>
-          </div>
-
-          <div className="landing-footer" aria-hidden>
-            <span />
-            <span>🐾</span>
-            <span />
-          </div>
-        </div>
-      </AuthShell>
+      <LandingScreen
+        onSignup={() => moveTo('signup')}
+        onLogin={() => moveTo('signin')}
+      />
     );
   }
 

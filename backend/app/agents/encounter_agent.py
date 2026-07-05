@@ -70,6 +70,10 @@ _MATCH_PROMPT = """\
 - 個人情報・センシティブな情報は含めないでください
 - 自然な日本語で書いてください
 - common_messageは両端末に表示される1文のメッセージです
+- common_messageは**敬語・丁寧語を使わない**。「お好きなんですね」「お二人とも」のような
+  距離のある丁寧な言い回しは禁止。ペット同士がはしゃぐような、フレンドリーなタメ口
+  （「〜だね！」「〜なんだね！」）で書く。主語は「お二人とも」ではなく「2人とも」にする。
+  例: OK「2人ともマンガが好きなんだね！」 / NG「お二人ともマンガがお好きなんですね！」
 
 ## 深さを最優先する
 - common_message の選定は「深さ」を最優先してください。深さ =
@@ -108,6 +112,8 @@ message の作り方（重要）:
   例: 「2人とも『鬼滅の刃』が大好きなんだね！煉獄さんの生き様に泣いたっていうお話をしたら？」
 - 本人に該当する好きなポイントが1つも無ければ、message は空文字 "" にする（無理に作らない）。
 - 全体は自然な日本語の1文（80字以内目安）。
+- **敬語・丁寧語を使わない**。「お好きなんですね」「お二人とも」のような距離のある丁寧な言い回しは禁止。
+  ペット同士がはしゃぐような、フレンドリーなタメ口（「〜だね！」「〜なんだね！」）で書く。
 
 points の作り方:
 - common_topics に含まれる話題についてのみ point を作る。
@@ -482,17 +488,24 @@ class EncounterAgent:
 def _match_profiles_to_topics(profiles: list[dict], common_topics: list[str]) -> list[dict]:
     """common_topics（LLMが返す素の文字列）に一致する private profile を選ぶ。
 
-    common_topics には category_large が無いのでトピック名の正規化（strip+lower）で
-    照合する。完全一致→部分一致（どちらかがどちらかを含む）でフォールバックする。
+    トピック名だけでなく category_large / category_medium も照合対象にする。
+    common_topics が「マンガ」のような大カテゴリ止まりでも、本人の具体的な
+    お気に入り（トピック名は違うがカテゴリーが一致するプロフィール）を拾えるようにし、
+    個別メッセージが常に空になるのを防ぐ。
+    完全一致→部分一致（どちらかがどちらかを含む）でフォールバックする。
     """
     normalized_topics = [t.strip().lower() for t in common_topics if isinstance(t, str) and t.strip()]
     if not normalized_topics:
         return []
     matched: list[dict] = []
     for p in profiles:
-        name = (p.get("topic") or "").strip().lower()
-        if not name:
+        candidates = [
+            str(p.get(field) or "").strip().lower()
+            for field in ("topic", "category_large", "category_medium")
+        ]
+        candidates = [c for c in candidates if c]
+        if not candidates:
             continue
-        if any(name == t or name in t or t in name for t in normalized_topics):
+        if any(c == t or c in t or t in c for c in candidates for t in normalized_topics):
             matched.append(p)
     return matched

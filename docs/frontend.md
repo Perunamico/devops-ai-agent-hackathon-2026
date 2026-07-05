@@ -167,7 +167,7 @@ idle
 - **API**：`GET /reports/{analysisId}`（初回アクセス時にLLM3が生成するため数秒かかる）
 - ローディング中：「ペットがレポートを作成中...」
 - 各カードにリアクションボタン（保存🔖・使った✓・いらない✗）
-  - クリックで `POST /reports/{analysisId}/feedback` → fire-and-forget（LLM4が記憶更新）
+  - クリックで `POST /reports/{analysisId}/feedback` → fire-and-forget（MemoryAgentが記憶更新）
 
 #### カードタイプと色
 
