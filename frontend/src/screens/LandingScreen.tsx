@@ -172,7 +172,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
             <span className="lp-star" style={{ position: 'absolute', top: '34%', left: '-2%', color: '#A9C8F7', fontSize: 18, animation: 'lp-twinkle 4s ease-in-out infinite .6s' }}>✦</span>
             <span style={{ position: 'absolute', top: 8, right: '16%', color: '#7FB0F5', fontSize: 22, animation: 'lp-twinkle 3.6s ease-in-out infinite .9s' }}>✦</span>
 
-            <img src="/lp/big.png" alt="共通の趣味・関心をつなぐTopipet" style={{ position: 'relative', zIndex: 2, width: '100%', maxWidth: 560, height: 'auto' }} />
+            <img src="/lp/big.png" alt="共通の趣味・関心をつなぐTopipet" style={{ position: 'relative', top: 15, zIndex: 2, width: '100%', maxWidth: 560, height: 'auto' }} />
           </div>
         </section>
 
