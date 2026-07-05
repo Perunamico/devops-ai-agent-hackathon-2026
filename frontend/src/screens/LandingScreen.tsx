@@ -43,7 +43,6 @@ const FEATURES: Feature[] = [
   { icon: '((•))', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '鳴き声で相手と交流', body: '近くの相手とはAIペット同士の鳴き声で交流。話した記憶を交換します。', imgLabel: '鳴き声通信', img: '/lp/bark.PNG' },
   { icon: '👥', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '共通の話題を発見', body: '友だちのAIペットとつながり、共通の話題のきっかけを提案。', imgLabel: '話題の発見', img: '/lp/interact.PNG' },
   { icon: '💡', iconColor: '#F0A93B', ring: '#F7DFB4', title: '話題のヒントを提案', body: 'AIペットが会話のきっかけになりそうな話題をそっと提案します。', imgLabel: '提案カード' },
-  { icon: '🌱', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '育つほど、深まる関係', body: '記憶が増えるほど、AIペットとの会話も、友だちとの関係も深まっていきます。', imgLabel: '育成イメージ' },
 ];
 
 const STEPS: Step[] = [
