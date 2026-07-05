@@ -1,0 +1,6 @@
+terraform {
+  backend "gcs" {
+    bucket = "your-tfstate-bucket"
+    prefix = "ai-pet"
+  }
+}

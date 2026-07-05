@@ -400,7 +400,7 @@ class MemoryAgent:
                     "preferred_suggestion_style": raw.get("preferred_suggestion_style", ""),
                 })
         except Exception as e:
-            logger.error("LLM4 memory update failed: %s", e)
+            logger.error("feedback memory update failed: %s", e)
 
 
 _VALID_LABELS = {"reason", "emotion", "context", "social_mode", "boundary", "example", "related_topic"}

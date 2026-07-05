@@ -45,7 +45,7 @@ body {
 :root {
   --pet-size: 40vh;
   --nav-bottom: 5rem;   /* 下ナビ(home)の高さ分。コンテンツ下余白・高さ計算に使う */
-  --nav-top: 3.5rem;    /* 上戻りバー(他画面)の高さ分 */
+  --nav-top: 3.5rem;    /* 下部「ホーム」戻りバー(他画面)の高さ分 */
   --nav-side: 0px;      /* 左サイドバー幅。スマホは0、PC幅で有効化 */
 }
 
@@ -173,8 +173,11 @@ body {
 .border-violet-300 { border-color: #c4b5fd; }
 .border-violet-400 { border-color: #a78bfa; }
 .border-violet-600 { border-color: #7c3aed; }
+.border-sky-200 { border-color: #bae6fd; }
+.border-sky-400 { border-color: #38bdf8; }
 .border-t-transparent { border-top-color: transparent; }
 .border-t-violet-500 { border-top-color: #8b5cf6; }
+.border-t-sky-500 { border-top-color: #0ea5e9; }
 
 .bg-white { background-color: #fff; }
 .bg-transparent { background-color: transparent; }
@@ -185,6 +188,8 @@ body {
 .bg-red-50 { background-color: #fef2f2; }
 .bg-red-500 { background-color: #ef4444; }
 .bg-sky-500 { background-color: #0ea5e9; }
+.bg-sky-100 { background-color: #e0f2fe; }
+.bg-sky-600 { background-color: #0284c7; }
 .bg-amber-50 { background-color: #fffbeb; }
 .bg-blue-50 { background-color: #eff6ff; }
 .bg-violet-50 { background-color: #f5f3ff; }
@@ -248,6 +253,7 @@ body {
 .text-violet-500 { color: #8b5cf6; }
 .text-violet-600 { color: #7c3aed; }
 .text-violet-700 { color: #6d28d9; }
+.text-sky-600 { color: #0284c7; }
 .text-green-600 { color: #16a34a; }
 .placeholder-gray-400::placeholder { color: #9ca3af; }
 
@@ -265,15 +271,18 @@ body {
 .hover\:bg-gray-200:hover { background-color: #e5e7eb; }
 .hover\:bg-green-600:hover { background-color: #16a34a; }
 .hover\:bg-violet-700:hover { background-color: #6d28d9; }
+.hover\:bg-sky-700:hover { background-color: #0369a1; }
 .disabled\:opacity-50:disabled { opacity: 0.5; }
 .disabled\:cursor-not-allowed:disabled { cursor: not-allowed; }
 .disabled\:text-gray-400:disabled { color: #9ca3af; }
 .focus\:outline-none:focus { outline: 2px solid transparent; outline-offset: 2px; }
 .focus\:bg-white:focus { background-color: #fff; }
 .focus\:border-violet-400:focus { border-color: #a78bfa; }
+.focus\:border-sky-400:focus { border-color: #38bdf8; }
 .focus\:ring-2:focus { box-shadow: 0 0 0 2px var(--tw-ring-color); }
 .focus\:ring-violet-100:focus { --tw-ring-color: #ede9fe; }
 .focus\:ring-violet-400:focus { --tw-ring-color: #a78bfa; }
+.focus\:ring-sky-100:focus { --tw-ring-color: #e0f2fe; }
 .focus-within\:bg-white:focus-within { background-color: #fff; }
 .focus-within\:border-violet-400:focus-within { border-color: #a78bfa; }
 .focus-within\:ring-2:focus-within { box-shadow: 0 0 0 2px var(--tw-ring-color); }
@@ -418,8 +427,9 @@ body {
   background: #fff;
 }
 /* コンテンツ側はナビの固定バー分だけ余白を空ける(変数経由) */
-.app-content.nav-bottom { padding-bottom: var(--nav-bottom); }
-.app-content.nav-top    { padding-top: var(--nav-top); }
+.app-content.nav-bottom     { padding-bottom: var(--nav-bottom); }
+/* 他画面の「ホーム」バーは下部固定。高さは従来の --nav-top のまま、位置だけ下へ */
+.app-content.nav-sub-bottom { padding-bottom: var(--nav-top); }
 
 @media (min-width: 768px) {
   /* 左サイドバー + 従来のスマホ幅(28rem)コンテンツ を横に並べ、全体を中央寄せ。
@@ -453,11 +463,12 @@ body {
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
 }
-.side-nav--sub {             /* 他画面: 旧 上戻りバー(h-14, px-4) */
-  left: 0; right: 0; top: 0;
+.side-nav--sub {             /* 他画面: 下部固定の「ホーム」バー(h-14) */
+  left: 0; right: 0; bottom: 0;
   height: 3.5rem;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding-left: 1rem;
   padding-right: 1rem;
 }
@@ -476,7 +487,7 @@ body {
   }
   .side-nav--home { height: auto; bottom: auto; padding: 0.5rem; }
   .side-nav--home button { flex: 0 0 auto; padding-top: 0.5rem; padding-bottom: 0.5rem; }
-  .side-nav--sub { height: auto; top: auto; align-items: stretch; padding: 0.5rem; }
+  .side-nav--sub { height: auto; bottom: auto; align-items: stretch; padding: 0.5rem; }
   .side-nav--sub button { flex-direction: column; gap: 0.25rem; justify-content: center; }
 }
 
