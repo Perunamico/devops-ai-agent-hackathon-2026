@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
   browserLocalPersistence,
+  browserPopupRedirectResolver,
   createUserWithEmailAndPassword,
   getAuth,
   getRedirectResult,
@@ -84,7 +85,12 @@ function getConfiguredAuth(): Auth | null {
     // 再訪しても維持される（サインアウトするまでログインしたまま）。
     // メール確認/再設定リンク経由での強制再ログインは consumeReloginParam 側の
     // 明示的な signOutUser 呼び出しで担保しているため、ここでは影響しない。
-    _auth = initializeAuth(app, { persistence: browserLocalPersistence });
+    // popupRedirectResolver: initializeAuth はデフォルトでは付与されないため、
+    // 明示的に渡さないと signInWithRedirect が auth/argument-error で落ちる。
+    _auth = initializeAuth(app, {
+      persistence: browserLocalPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
   } catch {
     // 既に初期化済み（HMR 等で二重初期化した場合）は既存インスタンスを使う。
     _auth = getAuth(app);
