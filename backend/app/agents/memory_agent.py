@@ -91,12 +91,16 @@ confidence は low | medium | high。推測が強いほど low にする。
 - blocked: 連絡先・住所・センシティブな個人情報・共有禁止トピック
 
 重要: 情報が少ない・発話が短い・相槌だから、という理由で review_required にしてはいけない。
-その場合は private にする。review_required は健康・宗教・政治・収入・家庭環境など
+その場合は private にする。review_required は健康・宗教・政治・収入・家庭環境や、
+地名・大学名・学校名・勤務先名など個人の特定につながり得る固有名詞を含む内容など、
 センシティブで共有可否が曖昧な内容に限る。
 
 ## ガードレール
 健康・宗教・政治・性的嗜好・収入・家庭環境・正確な居場所・他人の個人情報は、
 原則 private か review_required にし、共通点探しには使わない（contents の shareability も private にする）。
+**地名（市区町村・駅名・地域名など）・大学名・学校名・勤務先名**が発話に含まれる場合は、
+個人の特定につながり得るため category を review_required にし、safe_summary には
+その固有名詞を含めず「〜の話をした」程度の抽象化した要約にする。
 共有可否が未確認のものは shareability=unknown とする。
 ユーザーの人格を断定しない。
 
