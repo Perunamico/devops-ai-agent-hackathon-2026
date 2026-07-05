@@ -230,21 +230,16 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
   }
 
   // Google の signInWithRedirect でこのページに戻ってきた直後、一度だけ結果を確認する。
-  // 原因調査のため、一時的に診断結果をそのまま notice に出す。
+  // 成功時は subscribeAuthState 側で自然に進むので、ここでは失敗時のみ扱う。
+  // 「no-user」は authDomain とホスティングのドメインが異なる環境（iOS Safari 等）で
+  // 実際に起こりうる既知の失敗パターンで、他の想定外エラーと同じ扱いにする。
   useEffect(() => {
     let cancelled = false;
     consumeGoogleRedirectDiagnostic().then((diag) => {
-      if (cancelled || diag.status === 'skipped') return;
+      if (cancelled || diag.status === 'skipped' || diag.status === 'signed-in') return;
+      if (diag.status === 'error') console.warn('Google redirect sign-in failed.', diag.code);
       setView('signin');
-      if (diag.status === 'error') {
-        setError(`[debug] redirect error: ${diag.code}`);
-      } else if (diag.status === 'no-user') {
-        setNotice('[debug] redirect resolved with no user (no error)');
-      } else if (diag.status === 'no-auth') {
-        setNotice('[debug] auth not configured at redirect check time');
-      } else {
-        setNotice(`[debug] redirect resolved signed-in uid=${diag.uid}`);
-      }
+      setError('Googleでのログインに失敗しました。時間をおいてもう一度お試しください。');
     });
     return () => { cancelled = true; };
   }, []);
