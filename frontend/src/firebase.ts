@@ -3,6 +3,7 @@ import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
+  getRedirectResult,
   GoogleAuthProvider,
   initializeAuth,
   onAuthStateChanged,
@@ -10,7 +11,7 @@ import {
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
   signOut,
   type Auth,
   type User,
@@ -127,8 +128,23 @@ export async function signInWithEmail(email: string, password: string): Promise<
 export async function signInWithGoogle(): Promise<void> {
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
+  // iOS Safari は ITP（サイト越えトラッキング防止）の影響で signInWithPopup が
+  // 失敗しやすいため、ページ遷移を伴う signInWithRedirect を使う。
   // Google アカウントはメール確認済み前提のため、メール確認待ち画面は経由しない。
-  await signInWithPopup(auth, new GoogleAuthProvider());
+  await signInWithRedirect(auth, new GoogleAuthProvider());
+}
+
+// リダイレクトから戻ってきた直後に一度だけ呼び、失敗していればエラーを返す。
+// 成功時は subscribeAuthState 側で signedIn な状態が自然に反映される。
+export async function consumeGoogleRedirectError(): Promise<unknown | null> {
+  const auth = getConfiguredAuth();
+  if (!auth) return null;
+  try {
+    await getRedirectResult(auth);
+    return null;
+  } catch (error) {
+    return error;
+  }
 }
 
 // メールのリンクから戻ってきたときの continue URL。`?relogin=<mode>` を付けておき、

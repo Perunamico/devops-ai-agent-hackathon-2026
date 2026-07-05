@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, type FormEvent,
 import type { PetResponse, SelectedLabel } from './types';
 import { getCurrentPet } from './api';
 import {
+  consumeGoogleRedirectError,
   createAccountWithEmail,
   reloadCurrentUser,
   resendVerificationEmail,
@@ -228,20 +229,28 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
     setNotice('');
   }
 
+  // Google の signInWithRedirect でこのページに戻ってきた直後、一度だけ結果を確認する。
+  // 失敗していればサインイン画面にエラーを表示する（成功時は subscribeAuthState 側で進む）。
+  useEffect(() => {
+    let cancelled = false;
+    consumeGoogleRedirectError().then((err) => {
+      if (cancelled || !err) return;
+      setView('signin');
+      setError(authErrorMessage(err));
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   async function handleGoogleSignIn() {
     if (googleSubmitting) return;
     setGoogleSubmitting(true);
     setError('');
     setNotice('');
     try {
+      // ページ遷移するため、通常はここで戻ってこない（成功時は Google の画面へ移動する）。
       await signInWithGoogle();
     } catch (err) {
-      const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
-      // ユーザーが自分でポップアップを閉じた場合はエラー表示しない。
-      if (!code.includes('popup-closed-by-user') && !code.includes('cancelled-popup-request')) {
-        setError(authErrorMessage(err));
-      }
-    } finally {
+      setError(authErrorMessage(err));
       setGoogleSubmitting(false);
     }
   }
