@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { approveMemory, getMemories } from '../api';
-import { useApp } from '../AppContext';
+import { useApp } from '../App';
 import type { MemoryListItem, MemoryListResponse } from '../types';
 
 type SectionKey = keyof MemoryListResponse;

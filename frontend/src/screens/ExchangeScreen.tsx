@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { QRCodeSVG as QRCode } from 'qrcode.react';
-import { useApp } from '../AppContext';
+import { useApp } from '../App';
 import { issueToken, resolveExchange, getMatchStatus, getSession, markSessionReady, endSession, pollToken, scanQrToken } from '../api';
 import { createBroadcastExchange } from '../audio';
 import type { ExchangeTokenResponse, SessionResponse, ResolveStatus } from '../types';
@@ -101,8 +100,7 @@ function createExchangeVideoPlayer(video: HTMLVideoElement): ExchangeAnimPlayer 
 }
 
 export default function ExchangeScreen() {
-  const { setSessionId, setAnalysisId, setInteractionActive } = useApp();
-  const router = useRouter();
+  const { setScreen, setSessionId, setAnalysisId, setInteractionActive } = useApp();
   const [step, setStep] = useState<ExchangeStep>('exchanging');
   const [errorKind, setErrorKind] = useState<ErrorKind>('generic');
   const [tokenData, setTokenData] = useState<ExchangeTokenResponse | null>(null);
@@ -519,7 +517,7 @@ export default function ExchangeScreen() {
 
   function handleGiveUp() {
     cleanup();
-    router.push('/home');
+    setScreen('home');
   }
 
   // ---- UI ----
@@ -765,7 +763,7 @@ export default function ExchangeScreen() {
                 </p>
               </div>
               {/* 交流終了後はホームへの導線が必要なため、画面内ボタンは残す（Issue #103 は上部バーのみ対象）。 */}
-              <button onClick={() => router.push('/home')} className={styles.homeButton}>
+              <button onClick={() => setScreen('home')} className={styles.homeButton}>
                 ホームに戻る
               </button>
             </>

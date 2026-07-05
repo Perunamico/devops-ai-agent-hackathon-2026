@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useApp } from '../AppContext';
+import { useApp } from '../App';
 import { getReport, submitFeedback } from '../api';
 import type { ReportCard, CardType } from '../types';
 
@@ -55,8 +54,7 @@ function Card({ card, analysisId }: { card: ReportCard; analysisId: string }) {
 }
 
 export default function ReportScreen() {
-  const { analysisId } = useApp();
-  const router = useRouter();
+  const { analysisId, setScreen } = useApp();
   const [cards, setCards] = useState<ReportCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -78,7 +76,7 @@ export default function ReportScreen() {
         <div className="text-5xl">📄</div>
         <p className="text-gray-500 text-sm">レポートはありません</p>
         <p className="text-xs text-gray-400">ペットを交換してからレポートを見られます</p>
-        <button onClick={() => router.push('/exchange')} className="text-violet-600 text-sm underline">
+        <button onClick={() => setScreen('exchange')} className="text-violet-600 text-sm underline">
           交換画面へ
         </button>
       </div>
@@ -125,7 +123,7 @@ export default function ReportScreen() {
 
       {cards.length > 0 && (
         <button
-          onClick={() => router.push('/home')}
+          onClick={() => setScreen('home')}
           className="w-full bg-gray-100 text-gray-700 rounded-2xl py-3 font-medium text-sm mt-2 hover:bg-gray-200"
         >
           ホームへ戻る
