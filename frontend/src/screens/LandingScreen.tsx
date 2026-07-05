@@ -38,7 +38,8 @@ const LEGAL_TEXTS: Record<LegalKey, string> = {
 };
 
 const FEATURES: Feature[] = [
-  { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '会話から覚える', body: 'あなたの「好き」や大切なことを、AIペットがそっと覚えます。', imgLabel: '安心設計', img: '/lp/chat.PNG' },
+  { icon: '🏷', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '趣味ラベル選択', body: 'まずはルールベースで、自覚のある趣味・嗜好をラベルから登録。', imgLabel: 'ラベル選択', img: '/lp/labels.PNG' },
+  { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '会話から覚える', body: '会話の中から「好き」を見つけて整理し、AIペットがそっと覚えます。', imgLabel: '安心設計', img: '/lp/chat.PNG' },
   { icon: '✎', iconColor: '#3B7BF0', ring: '#C6DAF9', title: 'プライバシーに配慮', body: '記憶ごとに共有・非共有を選べるから、プライバシーも安心。', imgLabel: '確認フロー', img: '/lp/privacy.PNG' },
   { icon: '((•))', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '鳴き声で相手と交流', body: '近くの相手とはAIペット同士の鳴き声で交流。話した記憶を交換します。', imgLabel: '鳴き声通信', img: '/lp/bark.PNG' },
   { icon: '👥', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '共通の話題を発見', body: '友だちのAIペットとつながり、共通の話題のきっかけを提案。', imgLabel: '話題の発見', img: '/lp/interact.PNG' },
@@ -132,7 +133,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
         </header>
 
         {/* HERO */}
-        <section style={{ maxWidth: 1240, margin: '0 auto', padding: 'var(--lp-hero-pad-top) var(--lp-pad-x) 40px', display: 'grid', gridTemplateColumns: 'var(--lp-hero-cols)', gap: 48, alignItems: 'center' }}>
+        <section style={{ maxWidth: 1240, margin: '0 auto', padding: 'var(--lp-hero-pad-top) var(--lp-pad-x) 40px', display: 'grid', gridTemplateColumns: 'var(--lp-hero-cols)', gap: 48, alignItems: 'start' }}>
           <div>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '11px 22px', borderRadius: 999, background: '#fff', border: '1.5px solid #DCE8FC', boxShadow: '0 6px 18px rgba(59,123,240,.08)', marginBottom: 36 }}>
               <span style={{ color: '#3B7BF0', fontSize: 14 }}>✦</span>
