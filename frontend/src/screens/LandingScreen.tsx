@@ -2,17 +2,6 @@ import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { TERMS_TEXT, PRIVACY_TEXT } from '../content/legalText';
 
-interface Memory {
-  tag: string;
-  tagBg: string;
-  tagColor: string;
-  date: string;
-  title: string;
-  sub: string;
-  actionIcon: string;
-  actionColor: string;
-}
-
 interface Feature {
   icon: string;
   iconColor: string;
@@ -46,12 +35,6 @@ const LEGAL_TEXTS: Record<LegalKey, string> = {
   terms: TERMS_TEXT,
   privacy: PRIVACY_TEXT,
 };
-
-const MEMORIES: Memory[] = [
-  { tag: '映画', tagBg: '#DFF3EF', tagColor: '#1F9E8C', date: '5/12', title: 'SF映画が好き', sub: 'インターステラーが特に印象的', actionIcon: '✓', actionColor: '#1F9E8C' },
-  { tag: 'ゲーム', tagBg: '#E7EEFB', tagColor: '#3B7BF0', date: '5/10', title: 'RPGが好き', sub: 'ゼルダの伝説にハマっている', actionIcon: '👥', actionColor: '#3B7BF0' },
-  { tag: '音楽', tagBg: '#E7EEFB', tagColor: '#3B7BF0', date: '5/9', title: 'ロックが好き', sub: 'ヨルシカやスピッツをよく聴く', actionIcon: '((•))', actionColor: '#3B7BF0' },
-];
 
 const FEATURES: Feature[] = [
   { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '安心して覚える', body: 'あなたの「好き」や大切なことを、AIペットがそっと覚えます。', imgLabel: '安心設計' },
@@ -92,12 +75,9 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
           --lp-hero-cols: 1fr;
           --lp-h1-size: 34px;
           --lp-hero-visual-min-h: 380px;
-          --lp-phone-w: 240px;
-          --lp-robot-w: 92px;
-          --lp-robot-left: -2%;
           --lp-grid-cols-3: 1fr;
           --lp-h2-size: 28px;
-          --lp-cta-pad-y: 28px;
+          --lp-cta-pad-y: 7px;
           --lp-cta-pad-x: 24px;
           --lp-cta-h2-size: 28px;
           --lp-feature-card-w: 240px;
@@ -111,12 +91,9 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
             --lp-hero-pad-top: 70px;
             --lp-h1-size: 44px;
             --lp-hero-visual-min-h: 560px;
-            --lp-phone-w: 352px;
-            --lp-robot-w: 150px;
-            --lp-robot-left: -6%;
             --lp-grid-cols-3: repeat(3,1fr);
             --lp-h2-size: 44px;
-            --lp-cta-pad-y: 52px;
+            --lp-cta-pad-y: 13px;
             --lp-cta-pad-x: 48px;
             --lp-cta-h2-size: 38px;
             --lp-feature-card-w: 280px;
@@ -189,73 +166,19 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
             </div>
           </div>
 
-          {/* phone + robot */}
+          {/* hero visual */}
           <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--lp-hero-visual-min-h)' }}>
             <span className="lp-star" style={{ position: 'absolute', top: 60, left: '2%', color: '#7FB0F5', fontSize: 26, animation: 'lp-twinkle 3.2s ease-in-out infinite' }}>✦</span>
             <span className="lp-star" style={{ position: 'absolute', top: '34%', left: '-2%', color: '#A9C8F7', fontSize: 18, animation: 'lp-twinkle 4s ease-in-out infinite .6s' }}>✦</span>
             <span style={{ position: 'absolute', top: 8, right: '16%', color: '#7FB0F5', fontSize: 22, animation: 'lp-twinkle 3.6s ease-in-out infinite .9s' }}>✦</span>
 
-            <div style={{ position: 'absolute', left: 'var(--lp-robot-left)', bottom: 22, zIndex: 3, animation: 'lp-floaty 5.5s ease-in-out infinite' }}>
-              <img src="/png/stop.png" alt="Topipet" style={{ width: 'var(--lp-robot-w)', height: 'auto', display: 'block', filter: 'drop-shadow(0 20px 30px rgba(59,123,240,.28))' }} />
-            </div>
-
-            <div style={{ position: 'relative', zIndex: 2, width: 'var(--lp-phone-w)', borderRadius: 44, background: '#fff', border: '1px solid #E7EEFA', padding: 12, boxShadow: '0 40px 80px rgba(46,86,170,.18),0 8px 24px rgba(46,86,170,.08)' }}>
-              <div style={{ borderRadius: 34, overflow: 'hidden', background: '#F7FAFF' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px 6px', fontSize: 14, fontWeight: 700 }}>
-                  <span>9:41</span>
-                  <span style={{ display: 'flex', gap: 6, alignItems: 'center', color: '#1F2A44' }}>
-                    <span style={{ letterSpacing: 1 }}>▂▄▆</span><span>📶</span><span style={{ fontSize: 12 }}>🔋</span>
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 20px 14px' }}>
-                  <span style={{ fontSize: 22, color: '#54617C' }}>‹</span>
-                  <span style={{ ...heading, fontSize: 20 }}>きおく <span style={{ color: '#7FB0F5', fontSize: 14 }}>✦</span></span>
-                  <span style={{ fontSize: 22, color: '#54617C', letterSpacing: 1 }}>···</span>
-                </div>
-                <div style={{ display: 'flex', gap: 6, padding: '0 16px 14px' }}>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '9px 4px', borderRadius: 11, background: '#fff', border: '1px solid #ECF1FA', fontSize: 12.5, fontWeight: 700, color: '#54617C' }}>
-                    確認依頼<span style={{ background: '#FF7A45', color: '#fff', width: 17, height: 17, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>2</span>
-                  </div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '9px 4px', borderRadius: 11, background: '#EAF1FF', border: '1px solid #CFE0FC', fontSize: 12.5, fontWeight: 700, color: '#3B7BF0' }}>共有可</div>
-                  <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5, padding: '9px 4px', borderRadius: 11, background: '#fff', border: '1px solid #ECF1FA', fontSize: 12.5, fontWeight: 700, color: '#54617C' }}>非共有 🔒</div>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 11, padding: '0 16px 16px' }}>
-                  {MEMORIES.map((m) => (
-                    <div key={m.title} style={{ background: '#fff', border: '1px solid #EDF2FB', borderRadius: 18, padding: '14px 15px', boxShadow: '0 4px 14px rgba(46,86,170,.05)' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                        <span style={{ padding: '3px 10px', borderRadius: 8, background: m.tagBg, color: m.tagColor, fontSize: 11, fontWeight: 700 }}>{m.tag}</span>
-                        <span style={{ color: '#9AA8C2', fontSize: 12, fontWeight: 500 }}>{m.date}</span>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 15.5, marginBottom: 2 }}>{m.title}</div>
-                          <div style={{ color: '#8290AB', fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.sub}</div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 13, flexShrink: 0, color: '#3B7BF0' }}>
-                          <span style={{ color: m.actionColor, fontSize: 17 }}>{m.actionIcon}</span>
-                          <span style={{ color: '#B7C4DC', fontSize: 15 }}>✎</span>
-                          <span style={{ color: '#B7C4DC', fontSize: 15 }}>🔒</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-around', padding: '14px 20px 20px', borderTop: '1px solid #EEF2FA', background: '#fff' }}>
-                  <span style={{ fontSize: 20, color: '#54617C' }}>⌂</span>
-                  <span style={{ fontSize: 19, color: '#B7C4DC' }}>🤖</span>
-                  <span style={{ width: 44, height: 44, borderRadius: '50%', background: '#3B7BF0', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, boxShadow: '0 8px 18px rgba(59,123,240,.4)', marginTop: -26, border: '4px solid #fff' }}>+</span>
-                  <span style={{ fontSize: 19, color: '#B7C4DC' }}>⚙</span>
-                  <span style={{ fontSize: 19, color: '#B7C4DC' }}>👥</span>
-                </div>
-              </div>
-            </div>
+            <img src="/lp/big.png" alt="共通の趣味・関心をつなぐTopipet" style={{ position: 'relative', zIndex: 2, width: '100%', maxWidth: 560, height: 'auto' }} />
           </div>
         </section>
 
         {/* HOW (3 steps) */}
         <section id="how" style={{ maxWidth: 1140, margin: '0 auto', padding: '70px var(--lp-pad-x) 40px' }}>
           <div style={{ textAlign: 'center', marginBottom: 64 }}>
-            <span style={{ display: 'inline-block', padding: '7px 20px', borderRadius: 999, background: '#EAF1FF', color: '#3B7BF0', fontWeight: 700, fontSize: 14, marginBottom: 20 }}>しくみ</span>
             <h2 style={{ ...heading, fontSize: 'var(--lp-h2-size)', lineHeight: 1.3 }}>3ステップではじめられます</h2>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'var(--lp-grid-cols-3)', gap: 28 }}>
