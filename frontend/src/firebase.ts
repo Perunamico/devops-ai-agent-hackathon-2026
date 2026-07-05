@@ -143,22 +143,32 @@ export async function signInWithGoogle(): Promise<void> {
   await signInWithRedirect(auth, new GoogleAuthProvider());
 }
 
-// リダイレクトから戻ってきた直後に一度だけ呼び、失敗していればエラーを返す。
-// 成功時は subscribeAuthState 側で signedIn な状態が自然に反映される。
+export type GoogleRedirectDiagnostic =
+  | { status: 'skipped' }
+  | { status: 'no-auth' }
+  | { status: 'no-user' }
+  | { status: 'signed-in'; uid: string }
+  | { status: 'error'; code: string };
+
+// リダイレクトから戻ってきた直後に一度だけ呼び、結果を診断情報として返す。
 // signInWithGoogle を呼んでいない通常の訪問では getRedirectResult 自体を呼ばない
 // （authDomain とホスティングのドメインが異なる環境では、pending なリダイレクトが
 // なくても内部の iframe チェックが失敗し、無関係なアクセスにまでエラーが出てしまうため）。
-export async function consumeGoogleRedirectError(): Promise<unknown | null> {
-  if (typeof window === 'undefined') return null;
-  if (!sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY)) return null;
+export async function consumeGoogleRedirectDiagnostic(): Promise<GoogleRedirectDiagnostic> {
+  if (typeof window === 'undefined') return { status: 'skipped' };
+  if (!sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY)) return { status: 'skipped' };
   sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
   const auth = getConfiguredAuth();
-  if (!auth) return null;
+  if (!auth) return { status: 'no-auth' };
   try {
-    await getRedirectResult(auth);
-    return null;
+    const result = await getRedirectResult(auth);
+    if (result?.user) return { status: 'signed-in', uid: result.user.uid };
+    return { status: 'no-user' };
   } catch (error) {
-    return error;
+    const code = typeof error === 'object' && error && 'code' in error
+      ? String((error as { code?: string }).code)
+      : 'unknown';
+    return { status: 'error', code };
   }
 }
 
