@@ -175,6 +175,8 @@ export interface FriendItem {
   common_topics: string[];
   // 直近の交流で本人向けに生成されたメッセージ（無ければ共通メッセージ）
   comment: string;
+  // 直近セッションのID（話題を見るモーダルの取得キー。古いデータでは空文字のことがある）
+  session_id: string;
 }
 
 export interface FriendsResponse {

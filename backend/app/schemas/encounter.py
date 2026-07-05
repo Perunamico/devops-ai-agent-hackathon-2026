@@ -85,6 +85,8 @@ class FriendItem(BaseModel):
     common_topics: list[str] = []
     # 直近の交流で本人向けに生成されたメッセージ（無ければ共通メッセージ）
     comment: str = ""
+    # 直近セッションのID（/exchanges/{session_id}/analysis を叩くために必要）
+    session_id: str = ""
 
 
 class FriendsResponse(BaseModel):
