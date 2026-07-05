@@ -125,18 +125,27 @@ export async function signInWithEmail(email: string, password: string): Promise<
   await signInWithEmailAndPassword(auth, email, password);
 }
 
+const GOOGLE_REDIRECT_PENDING_KEY = 'google-auth-redirect-pending';
+
 export async function signInWithGoogle(): Promise<void> {
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
   // iOS Safari は ITP（サイト越えトラッキング防止）の影響で signInWithPopup が
   // 失敗しやすいため、ページ遷移を伴う signInWithRedirect を使う。
   // Google アカウントはメール確認済み前提のため、メール確認待ち画面は経由しない。
+  sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, '1');
   await signInWithRedirect(auth, new GoogleAuthProvider());
 }
 
 // リダイレクトから戻ってきた直後に一度だけ呼び、失敗していればエラーを返す。
 // 成功時は subscribeAuthState 側で signedIn な状態が自然に反映される。
+// signInWithGoogle を呼んでいない通常の訪問では getRedirectResult 自体を呼ばない
+// （authDomain とホスティングのドメインが異なる環境では、pending なリダイレクトが
+// なくても内部の iframe チェックが失敗し、無関係なアクセスにまでエラーが出てしまうため）。
 export async function consumeGoogleRedirectError(): Promise<unknown | null> {
+  if (typeof window === 'undefined') return null;
+  if (!sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY)) return null;
+  sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
   const auth = getConfiguredAuth();
   if (!auth) return null;
   try {
