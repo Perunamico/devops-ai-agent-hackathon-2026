@@ -20,6 +20,8 @@ export interface UserInputCreate {
 
 export interface ChatRequest {
   message: string;
+  // タブを閉じて開き直した後の最初の発話。直前の会話を引き継がず新しい会話として扱われる。
+  session_start?: boolean;
 }
 
 export interface SelectedLabel {
@@ -175,6 +177,8 @@ export interface FriendItem {
   common_topics: string[];
   // 直近の交流で本人向けに生成されたメッセージ（無ければ共通メッセージ）
   comment: string;
+  // 直近セッションのID（話題を見るモーダルの取得キー。古いデータでは空文字のことがある）
+  session_id: string;
 }
 
 export interface FriendsResponse {
