@@ -5,10 +5,8 @@ from app.agents.conversation_agent import (
     REINJECT_EVERY_TURNS,
     SESSION_GAP_MINUTES,
     ConversationAgent,
-    _is_new_session,
     _render_memory_summary,
     _should_inject_memory,
-    _trim_reply,
 )
 
 
@@ -63,20 +61,6 @@ def test_chat_returns_natural_reply_and_does_not_classify_synchronously():
     db.add_review_required.assert_not_called()
 
 
-def test_chat_trims_reply_that_exceeds_bubble_limit():
-    long_reply = "写真いいね。" + "とっても素敵な話だなあと思うよ。" * 10 + "どんなものを撮るのが好き？"
-    agent, _ = make_agent(reply={
-        "reply": long_reply,
-        "intent": "interest_discovery",
-        "ui_hint": {"emotion": "curious", "animation": "stretch"},
-    })
-
-    result = agent.chat("user1", "最近写真にハマってる")
-
-    assert len(result.reply) <= 100
-    assert result.reply.endswith("。")
-
-
 def test_chat_falls_back_when_reply_generation_fails():
     agent, db = make_agent(raise_error=True)
 
@@ -85,20 +69,6 @@ def test_chat_falls_back_when_reply_generation_fails():
     assert result.reply
     assert result.memory is None
     db.save_chat_message.assert_called_once()
-
-
-def test_trim_reply_cuts_at_sentence_boundary_within_limit():
-    text = "あ" * 50 + "。" + "い" * 50 + "。"
-    assert _trim_reply(text, limit=60) == "あ" * 50 + "。"
-
-
-def test_trim_reply_keeps_short_text_unchanged():
-    assert _trim_reply("そうなんだ！", limit=100) == "そうなんだ！"
-
-
-def test_trim_reply_keeps_first_sentence_when_no_ending_within_limit():
-    text = "あ" * 80 + "。"
-    assert _trim_reply(text, limit=60) == text
 
 
 def test_render_memory_summary_formats_profiles():
@@ -153,78 +123,6 @@ def test_chat_includes_memory_summary_at_start():
 
     prompt = _last_prompt(agent._ai)
     assert "休日に風景写真を撮りに行くと話した。" in prompt
-
-
-def test_is_new_session():
-    now = datetime.now(timezone.utc)
-    # 直近発話が無い・時刻が読めないときは区切らない
-    assert _is_new_session(None, now) is False
-    assert _is_new_session("not-a-date", now) is False
-    # SESSION_GAP_MINUTES 以上空いたら新しい会話の冒頭
-    stale = (now - timedelta(minutes=SESSION_GAP_MINUTES)).isoformat()
-    assert _is_new_session(stale, now) is True
-    recent = (now - timedelta(minutes=1)).isoformat()
-    assert _is_new_session(recent, now) is False
-
-
-def test_chat_with_session_start_drops_history_and_injects_memory():
-    agent, db = make_agent()
-    db.get_private_memory.return_value = _SAMPLE_PRIVATE
-    now = datetime.now(timezone.utc)
-    # 直近発話は1分前（30分未満）だが、タブを開き直した最初の発話なので引き継がない
-    db.get_recent_chat_messages.return_value = [
-        {
-            "user_message": "昨日見た映画の話なんだけど",
-            "pet_reply": "どんな映画だったの？",
-            "created_at": (now - timedelta(minutes=1)).isoformat(),
-        },
-    ]
-    db.count_chat_messages.return_value = 3
-
-    agent.chat("user1", "おはよう", session_start=True)
-
-    prompt = _last_prompt(agent._ai)
-    assert "昨日見た映画の話なんだけど" not in prompt
-    assert "休日に風景写真を撮りに行くと話した。" in prompt
-
-
-def test_chat_drops_history_after_session_gap_without_flag():
-    agent, db = make_agent()
-    db.get_private_memory.return_value = _SAMPLE_PRIVATE
-    now = datetime.now(timezone.utc)
-    # タブを開きっぱなしでも、直近発話から時間が空いたら新しい会話として扱う
-    db.get_recent_chat_messages.return_value = [
-        {
-            "user_message": "昨日見た映画の話なんだけど",
-            "pet_reply": "どんな映画だったの？",
-            "created_at": (now - timedelta(minutes=SESSION_GAP_MINUTES + 5)).isoformat(),
-        },
-    ]
-    db.count_chat_messages.return_value = 3
-
-    agent.chat("user1", "おはよう")
-
-    prompt = _last_prompt(agent._ai)
-    assert "昨日見た映画の話なんだけど" not in prompt
-    assert "休日に風景写真を撮りに行くと話した。" in prompt
-
-
-def test_chat_keeps_history_on_ordinary_turn():
-    agent, db = make_agent()
-    now = datetime.now(timezone.utc)
-    db.get_recent_chat_messages.return_value = [
-        {
-            "user_message": "昨日見た映画の話なんだけど",
-            "pet_reply": "どんな映画だったの？",
-            "created_at": (now - timedelta(minutes=1)).isoformat(),
-        },
-    ]
-    db.count_chat_messages.return_value = 3
-
-    agent.chat("user1", "アクション映画だよ")
-
-    prompt = _last_prompt(agent._ai)
-    assert "昨日見た映画の話なんだけど" in prompt
 
 
 def test_chat_omits_memory_summary_on_ordinary_turn():

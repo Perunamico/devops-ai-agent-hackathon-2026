@@ -8,13 +8,11 @@ from app.services.vertex_ai_service import VertexAIService
 
 logger = logging.getLogger(__name__)
 
-# 会話セッションの区切りと記憶要約を注入するタイミングの調整パラメータ。
-SESSION_GAP_MINUTES = 30  # 直近発話からこれ以上空いたら新しい会話の冒頭とみなす（履歴を引き継がず、記憶要約を注入）
+# 記憶要約を注入するタイミングの調整パラメータ。
+SESSION_GAP_MINUTES = 30  # 直近発話からこれ以上空いたら新しい会話の冒頭とみなす
 REINJECT_EVERY_TURNS = 6  # 会話が長引いたら、この往復数ごとに記憶要約を再注入する
 _MAX_MEMORY_PROFILES = 20  # 1回に載せるプロフィール数の上限
 _MAX_PROBE_LABELS = 8  # 初回の話題出し候補として載せる未確認ラベル数の上限
-_REPLY_MAX_CHARS = 100  # 吹き出しUIに収まる上限。LLMが超えて返しても文末で自然に切る
-_REPLY_TARGET_CHARS = 50  # プロンプトでLLMに指示する目標文字数（上限より余裕を持たせる）
 
 # ペットの本当に1回目の返答のときだけ差し込む「未確認ラベルの自発的な話題出し」許可（通常ルールの例外）。
 _FIRST_PROBE_TEMPLATE = """\
@@ -44,7 +42,7 @@ _CONVERSATION_PROMPT = """\
 
 ## 振る舞い
 - ユーザーのことは「ご主人」と呼ぶ。
-- 返信はやわらかく会話らしく、基本1〜3文、{reply_max_chars}文字以内に収める。
+- 返信はやわらかく会話らしく、基本1〜3文。
 - 基本は毎ターン、会話を少しだけ前に進める。やわらかい問いを1つ添えるか、次につながる具体的な手がかり（話題のきっかけ）を置く。共感や感想だけで終えて会話を止めない。
 - 質問は1回の返信で多くても1つ。質問攻めにはしない。
 - 質問の前に、ユーザーの発言を短く受け止める。
@@ -121,21 +119,11 @@ class ConversationAgent:
         self._ai = vertex_ai
         self._db = firestore
 
-    def chat(self, user_id: str, message: str, session_start: bool = False) -> ChatResponse:
+    def chat(self, user_id: str, message: str) -> ChatResponse:
         pet = self._db.get_pet_by_user(user_id) or {}
         history = self._db.get_recent_chat_messages(user_id)
 
-        # 新しい会話の冒頭（タブの開き直し or 直近発話から時間が空いた）では、
-        # 直前の会話履歴を引き継がず、代わりに記憶要約を必ず注入する。
-        last_created_at = history[-1].get("created_at") if history else None
-        new_session = session_start or _is_new_session(
-            last_created_at, datetime.now(timezone.utc)
-        )
-        memory_summary = self._build_memory_summary(
-            user_id, last_created_at, force=new_session
-        )
-        if new_session:
-            history = []
+        memory_summary = self._build_memory_summary(user_id, history)
         first_probe = self._build_first_probe(user_id)
 
         response = self._generate_reply(message, pet, history, memory_summary, first_probe)
@@ -146,18 +134,15 @@ class ConversationAgent:
         })
         return response
 
-    def _build_memory_summary(
-        self, user_id: str, last_created_at: str | None, force: bool = False
-    ) -> str:
+    def _build_memory_summary(self, user_id: str, history: list[dict]) -> str:
         """会話の冒頭・長引いた時だけ、蓄積した記憶（private profiles）の要約を返す。
 
         それ以外のターンは空文字を返し、プロンプトに記憶セクションを載せない。
-        force=True（新しい会話の冒頭）のときは判定を省いて必ず返す。
         """
-        if not force:
-            turn_count = self._db.count_chat_messages(user_id)
-            if not _should_inject_memory(turn_count, last_created_at, datetime.now(timezone.utc)):
-                return ""
+        turn_count = self._db.count_chat_messages(user_id)
+        last_created_at = history[-1].get("created_at") if history else None
+        if not _should_inject_memory(turn_count, last_created_at, datetime.now(timezone.utc)):
+            return ""
         private = self._db.get_private_memory(user_id) or {}
         return _render_memory_summary(private)
 
@@ -193,13 +178,11 @@ class ConversationAgent:
             first_probe=f"\n{first_probe}\n" if first_probe else "",
             history_json=json.dumps(history, ensure_ascii=False),
             message=message,
-            reply_max_chars=_REPLY_TARGET_CHARS,
         )
         try:
             raw = self._ai.generate_json(prompt, temperature=0.7)
-            reply = _trim_reply(str(raw.get("reply") or _FALLBACK_REPLY))
             return ChatResponse(
-                reply=reply,
+                reply=str(raw.get("reply") or _FALLBACK_REPLY),
                 intent=raw.get("intent") or "small_talk",
                 memory=None,
                 ui_hint=ChatUiHint(**(raw.get("ui_hint") or {})),
@@ -212,38 +195,6 @@ class ConversationAgent:
                 memory=None,
                 ui_hint=ChatUiHint(),
             )
-
-
-_SENTENCE_ENDINGS = "。！？"
-
-
-def _trim_reply(text: str, limit: int = _REPLY_MAX_CHARS) -> str:
-    """吹き出しUIからはみ出さないよう、返信を limit 文字以内に文末で自然に収める。
-
-    limit 以内に文末（。！？）があればそこまで採用する。無ければ文を途中で
-    切らずに最初の1文をそのまま残す（多少 limit を超えることがある）。
-    """
-    text = (text or "").strip()
-    if len(text) <= limit:
-        return text
-    cut = max(text.rfind(c, 0, limit) for c in _SENTENCE_ENDINGS)
-    if cut != -1:
-        return text[: cut + 1]
-    first = min((i for i in (text.find(c) for c in _SENTENCE_ENDINGS) if i != -1), default=-1)
-    if first != -1:
-        return text[: first + 1]
-    return text
-
-
-def _is_new_session(last_created_at: str | None, now: datetime) -> bool:
-    """直近発話から SESSION_GAP_MINUTES 以上空いたら新しい会話の冒頭とみなす（純粋関数）。
-
-    直近発話が無い・時刻が読めない場合は False（判断材料が無いので区切らない）。
-    """
-    last = _parse_iso(last_created_at)
-    if last is None:
-        return False
-    return now - last >= timedelta(minutes=SESSION_GAP_MINUTES)
 
 
 def _should_inject_memory(
@@ -259,8 +210,10 @@ def _should_inject_memory(
     if turn_count <= 0:
         return True
 
-    if _is_new_session(last_created_at, now):
-        return True
+    last = _parse_iso(last_created_at)
+    if last is not None:
+        if now - last >= timedelta(minutes=SESSION_GAP_MINUTES):
+            return True
 
     return turn_count % REINJECT_EVERY_TURNS == 0
 

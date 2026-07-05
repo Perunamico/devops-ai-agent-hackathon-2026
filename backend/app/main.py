@@ -263,7 +263,7 @@ def chat(
     ai: VertexAIService = Depends(get_vertex_ai),
 ):
     agent = ConversationAgent(ai, db)
-    response = agent.chat(uid, body.message, session_start=body.session_start)
+    response = agent.chat(uid, body.message)
 
     # 発話の応答後に、記憶の分類・整理を非同期で実行する（発話と分類を分離）。
     background_tasks.add_task(_reclassify_recent_bg, db, ai, uid)

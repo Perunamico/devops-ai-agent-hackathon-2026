@@ -7,9 +7,6 @@ from app.schemas.memory import MemoryClassifyResult
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
-    # タブを閉じて開き直した後の最初の発話。True のとき直前の会話履歴を引き継がず、
-    # 新しい会話の冒頭として応答する。
-    session_start: bool = False
 
 
 class ChatUiHint(BaseModel):

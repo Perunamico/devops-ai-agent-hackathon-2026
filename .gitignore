@@ -150,13 +150,5 @@ vite.config.ts.timestamp-*
 backend/.venv/
 **/__pycache__/
 
-# Terraform
-**/.terraform/
-*.tfstate
-*.tfstate.*
-*.tfvars
-!*.tfvars.example
-.terraform.lock.hcl
-
 .DS_Store
 **/.DS_Store

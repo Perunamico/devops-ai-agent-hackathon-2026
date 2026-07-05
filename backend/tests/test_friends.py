@@ -46,7 +46,6 @@ def test_same_partner_multiple_sessions_counts_once_with_latest_data():
     # 最新セッションの分析を採用し、表示はベスト3に切り詰める
     assert friend["common_topics"] == ["宇宙", "ねこ", "AIの未来"]
     assert friend["last_interacted_at"] == "2026-07-02T00:00:00+00:00"
-    assert friend["session_id"] == new
     # 統計のトピック数は最新分析の全件（4件）
     assert overview["common_topic_count"] == 4
     assert overview["last_interaction_at"] == "2026-07-02T00:00:00+00:00"
@@ -87,11 +86,10 @@ def test_comment_prefers_personal_message_over_common():
 
 def test_missing_pet_and_analysis_are_tolerated():
     db = _db()
-    session = db.create_exchange_session({"user_a_id": "A", "user_b_id": "B", "speaker_id": "A"})
+    db.create_exchange_session({"user_a_id": "A", "user_b_id": "B", "speaker_id": "A"})
     overview = db.get_friends_overview("A")
     friend = overview["friends"][0]
     assert friend["pet_name"] == "なまえのないペット"
     assert friend["common_topics"] == []
     assert friend["comment"] == ""
-    assert friend["session_id"] == session
     assert overview["common_topic_count"] == 0

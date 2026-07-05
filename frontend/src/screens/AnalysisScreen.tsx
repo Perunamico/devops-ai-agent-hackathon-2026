@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { useApp } from '../AppContext';
+import { useApp } from '../App';
 import { getAnalysis } from '../api';
 import type { ExchangeAnalysisResponse, ReportCard } from '../types';
 
@@ -23,19 +22,13 @@ function OnSiteCard({ card }: { card: ReportCard }) {
 }
 
 export default function AnalysisScreen() {
-  const { sessionId, analysisId } = useApp();
-  const router = useRouter();
+  const { sessionId, analysisId, setScreen } = useApp();
   const [data, setData] = useState<ExchangeAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // sessionId はメモリ上にしかないため、/analysis を直接開いたりリロードすると失われる。
-    // その場合はスピナーを止めて空状態を表示する。
-    if (!sessionId) {
-      setLoading(false);
-      return;
-    }
+    if (!sessionId) return;
     getAnalysis(sessionId)
       .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : 'エラーが発生しました'))
@@ -47,19 +40,6 @@ export default function AnalysisScreen() {
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 px-4">
         <div className="text-5xl animate-spin">🤝</div>
         <p className="text-gray-700 font-medium">ペット同士の共通点を分析中...</p>
-      </div>
-    );
-  }
-
-  if (!sessionId) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 gap-4 text-center">
-        <div className="text-5xl">✨</div>
-        <p className="text-gray-500 text-sm">分析結果はありません</p>
-        <p className="text-xs text-gray-400">ペットを交換してから分析を見られます</p>
-        <button onClick={() => router.push('/exchange')} className="text-violet-600 text-sm underline">
-          交換画面へ
-        </button>
       </div>
     );
   }
@@ -120,7 +100,7 @@ export default function AnalysisScreen() {
       {/* レポートへ */}
       {analysisId && (
         <button
-          onClick={() => router.push('/report')}
+          onClick={() => setScreen('report')}
           className="w-full bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-2xl py-4 font-bold text-base shadow-md mt-4"
         >
           📄 帰宅後レポートを見る

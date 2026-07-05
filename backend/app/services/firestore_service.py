@@ -11,13 +11,6 @@ logger = logging.getLogger(__name__)
 # 採番するときの ID 規則。承認API側（resolve_review_item）でこの ID を解釈する。
 _PROFILE_CONTENT_ID_PREFIX = "private-profile-"
 
-# find_active_session_by_pair が「同一の交流試行」とみなして再利用してよい猶予時間。
-# 音声/QRの同時照合による二重セッション生成を防ぐためだけの窓なので、鳴き声トークンの
-# 有効期限（TOKEN_EXPIRE_SECONDS=60秒）を十分にカバーできれば足りる。これを超えて
-# 古い "active" セッションを再利用すると、日をまたいだ再交流のたびに古いセッションが
-# 使い回され、ともだち一覧の「最後に交流した時間」が更新されなくなる。
-_ACTIVE_SESSION_REUSE_WINDOW_SECONDS = 120
-
 
 def _profile_content_id(profile_index: int, content_index: int) -> str:
     return f"{_PROFILE_CONTENT_ID_PREFIX}{profile_index}-{content_index}"
@@ -599,12 +592,10 @@ class FirestoreService:
         self._set("exchange_sessions", session_id, {**existing, **data})
 
     def find_active_session_by_pair(self, user_x: str, user_y: str) -> dict | None:
-        """このユーザーペアの「今まさに成立しつつある」セッションを返す（冪等な get-or-create の土台）。
+        """このユーザーペアのアクティブなセッションを返す（冪等な get-or-create の土台）。
 
         同時照合で複数生成されても両側が同一セッションへ収束するよう、created_at 昇順で
         先頭1件を返す。_list は順序を保証しないため明示的にソートする。
-        バイバイし忘れて "active" のまま放置された古いセッションまで再利用しないよう、
-        直近 _ACTIVE_SESSION_REUSE_WINDOW_SECONDS 秒以内に作られたものだけを候補にする。
         """
         pair = {user_x, user_y}
         candidates = []
@@ -627,12 +618,6 @@ class FirestoreService:
             order_by="created_at",
         ))
         candidates = [s for s in candidates if {s.get("user_a_id"), s.get("user_b_id")} == pair]
-        now = self._now()
-        candidates = [
-            s for s in candidates
-            if (parsed := self._parse_datetime(s.get("created_at")))
-            and (now - parsed).total_seconds() <= _ACTIVE_SESSION_REUSE_WINDOW_SECONDS
-        ]
         if not candidates:
             return None
         candidates.sort(key=lambda s: s.get("created_at", ""))
@@ -730,7 +715,6 @@ class FirestoreService:
                 "last_interacted_at": session.get("created_at", ""),
                 "common_topics": topics[:3],
                 "comment": comment,
-                "session_id": session.get("id", ""),
             })
 
         return {

@@ -1,18 +1,14 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
-  browserLocalPersistence,
-  browserPopupRedirectResolver,
+  browserSessionPersistence,
   createUserWithEmailAndPassword,
   getAuth,
-  getRedirectResult,
-  GoogleAuthProvider,
   initializeAuth,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
-  signInWithRedirect,
   signOut,
   type Auth,
   type User,
@@ -81,16 +77,11 @@ function getConfiguredAuth(): Auth | null {
   if (_auth) return _auth;
   const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
   try {
-    // ローカル永続化: ログイン状態はブラウザに保存され、タブを閉じても・
-    // 再訪しても維持される（サインアウトするまでログインしたまま）。
-    // メール確認/再設定リンク経由での強制再ログインは consumeReloginParam 側の
-    // 明示的な signOutUser 呼び出しで担保しているため、ここでは影響しない。
-    // popupRedirectResolver: initializeAuth はデフォルトでは付与されないため、
-    // 明示的に渡さないと signInWithRedirect が auth/argument-error で落ちる。
-    _auth = initializeAuth(app, {
-      persistence: browserLocalPersistence,
-      popupRedirectResolver: browserPopupRedirectResolver,
-    });
+    // セッション永続化: ログイン状態はタブを閉じるまで（sessionStorage 相当）。
+    // URL を開き直したとき・ブラウザを閉じて再訪したときは必ずログインから始まり、
+    // 過去の訪問で IndexedDB に残った古いセッションも復元しない。
+    // （同じタブ内のリロード・画面遷移ではログインが維持される）
+    _auth = initializeAuth(app, { persistence: browserSessionPersistence });
   } catch {
     // 既に初期化済み（HMR 等で二重初期化した場合）は既存インスタンスを使う。
     _auth = getAuth(app);
@@ -129,47 +120,6 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
   await signInWithEmailAndPassword(auth, email, password);
-}
-
-const GOOGLE_REDIRECT_PENDING_KEY = 'google-auth-redirect-pending';
-
-export async function signInWithGoogle(): Promise<void> {
-  const auth = getConfiguredAuth();
-  if (!auth) throw new Error('Firebase is not configured.');
-  // iOS Safari は ITP（サイト越えトラッキング防止）の影響で signInWithPopup が
-  // 失敗しやすいため、ページ遷移を伴う signInWithRedirect を使う。
-  // Google アカウントはメール確認済み前提のため、メール確認待ち画面は経由しない。
-  sessionStorage.setItem(GOOGLE_REDIRECT_PENDING_KEY, '1');
-  await signInWithRedirect(auth, new GoogleAuthProvider());
-}
-
-export type GoogleRedirectDiagnostic =
-  | { status: 'skipped' }
-  | { status: 'no-auth' }
-  | { status: 'no-user' }
-  | { status: 'signed-in'; uid: string }
-  | { status: 'error'; code: string };
-
-// リダイレクトから戻ってきた直後に一度だけ呼び、結果を診断情報として返す。
-// signInWithGoogle を呼んでいない通常の訪問では getRedirectResult 自体を呼ばない
-// （authDomain とホスティングのドメインが異なる環境では、pending なリダイレクトが
-// なくても内部の iframe チェックが失敗し、無関係なアクセスにまでエラーが出てしまうため）。
-export async function consumeGoogleRedirectDiagnostic(): Promise<GoogleRedirectDiagnostic> {
-  if (typeof window === 'undefined') return { status: 'skipped' };
-  if (!sessionStorage.getItem(GOOGLE_REDIRECT_PENDING_KEY)) return { status: 'skipped' };
-  sessionStorage.removeItem(GOOGLE_REDIRECT_PENDING_KEY);
-  const auth = getConfiguredAuth();
-  if (!auth) return { status: 'no-auth' };
-  try {
-    const result = await getRedirectResult(auth);
-    if (result?.user) return { status: 'signed-in', uid: result.user.uid };
-    return { status: 'no-user' };
-  } catch (error) {
-    const code = typeof error === 'object' && error && 'code' in error
-      ? String((error as { code?: string }).code)
-      : 'unknown';
-    return { status: 'error', code };
-  }
 }
 
 // メールのリンクから戻ってきたときの continue URL。`?relogin=<mode>` を付けておき、
