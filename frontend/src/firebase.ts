@@ -3,12 +3,14 @@ import {
   browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
+  GoogleAuthProvider,
   initializeAuth,
   onAuthStateChanged,
   reload,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
+  signInWithPopup,
   signOut,
   type Auth,
   type User,
@@ -120,6 +122,13 @@ export async function signInWithEmail(email: string, password: string): Promise<
   const auth = getConfiguredAuth();
   if (!auth) throw new Error('Firebase is not configured.');
   await signInWithEmailAndPassword(auth, email, password);
+}
+
+export async function signInWithGoogle(): Promise<void> {
+  const auth = getConfiguredAuth();
+  if (!auth) throw new Error('Firebase is not configured.');
+  // Google アカウントはメール確認済み前提のため、メール確認待ち画面は経由しない。
+  await signInWithPopup(auth, new GoogleAuthProvider());
 }
 
 // メールのリンクから戻ってきたときの continue URL。`?relogin=<mode>` を付けておき、
