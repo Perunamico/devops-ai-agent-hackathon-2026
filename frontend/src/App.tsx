@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, type FormEvent,
 import type { PetResponse, SelectedLabel } from './types';
 import { getCurrentPet } from './api';
 import {
-  consumeGoogleRedirectError,
+  consumeGoogleRedirectDiagnostic,
   createAccountWithEmail,
   reloadCurrentUser,
   resendVerificationEmail,
@@ -230,13 +230,21 @@ function AuthScreen({ initialView = 'landing', initialNotice = '' }: { initialVi
   }
 
   // Google の signInWithRedirect でこのページに戻ってきた直後、一度だけ結果を確認する。
-  // 失敗していればサインイン画面にエラーを表示する（成功時は subscribeAuthState 側で進む）。
+  // 原因調査のため、一時的に診断結果をそのまま notice に出す。
   useEffect(() => {
     let cancelled = false;
-    consumeGoogleRedirectError().then((err) => {
-      if (cancelled || !err) return;
+    consumeGoogleRedirectDiagnostic().then((diag) => {
+      if (cancelled || diag.status === 'skipped') return;
       setView('signin');
-      setError(authErrorMessage(err));
+      if (diag.status === 'error') {
+        setError(`[debug] redirect error: ${diag.code}`);
+      } else if (diag.status === 'no-user') {
+        setNotice('[debug] redirect resolved with no user (no error)');
+      } else if (diag.status === 'no-auth') {
+        setNotice('[debug] auth not configured at redirect check time');
+      } else {
+        setNotice(`[debug] redirect resolved signed-in uid=${diag.uid}`);
+      }
     });
     return () => { cancelled = true; };
   }, []);
