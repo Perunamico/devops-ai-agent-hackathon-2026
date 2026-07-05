@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from 'firebase/app';
 import {
-  browserSessionPersistence,
+  browserLocalPersistence,
   createUserWithEmailAndPassword,
   getAuth,
   initializeAuth,
@@ -77,11 +77,11 @@ function getConfiguredAuth(): Auth | null {
   if (_auth) return _auth;
   const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
   try {
-    // セッション永続化: ログイン状態はタブを閉じるまで（sessionStorage 相当）。
-    // URL を開き直したとき・ブラウザを閉じて再訪したときは必ずログインから始まり、
-    // 過去の訪問で IndexedDB に残った古いセッションも復元しない。
-    // （同じタブ内のリロード・画面遷移ではログインが維持される）
-    _auth = initializeAuth(app, { persistence: browserSessionPersistence });
+    // ローカル永続化: ログイン状態はブラウザに保存され、タブを閉じても・
+    // 再訪しても維持される（サインアウトするまでログインしたまま）。
+    // メール確認/再設定リンク経由での強制再ログインは consumeReloginParam 側の
+    // 明示的な signOutUser 呼び出しで担保しているため、ここでは影響しない。
+    _auth = initializeAuth(app, { persistence: browserLocalPersistence });
   } catch {
     // 既に初期化済み（HMR 等で二重初期化した場合）は既存インスタンスを使う。
     _auth = getAuth(app);
