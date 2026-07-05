@@ -43,7 +43,7 @@ const FEATURES: Feature[] = [
   { icon: '✎', iconColor: '#3B7BF0', ring: '#C6DAF9', title: 'プライバシーに配慮', body: '記憶ごとに共有・非共有を選べるから、プライバシーも安心。', imgLabel: '確認フロー', img: '/lp/privacy.PNG' },
   { icon: '((•))', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '鳴き声で相手と交流', body: '近くの相手とはAIペット同士の鳴き声で交流。話した記憶を交換します。', imgLabel: '鳴き声通信', img: '/lp/bark.PNG' },
   { icon: '👥', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '共通の話題を発見', body: '友だちのAIペットとつながり、共通の話題のきっかけを提案。', imgLabel: '話題の発見', img: '/lp/interact.PNG' },
-  { icon: '💡', iconColor: '#F0A93B', ring: '#F7DFB4', title: '話題のヒントを提案', body: 'AIペットが会話のきっかけになりそうな話題をそっと提案します。', imgLabel: '提案カード' },
+  { icon: '💡', iconColor: '#F0A93B', ring: '#F7DFB4', title: '話題のヒントを提案', body: 'AIペットが会話のきっかけになりそうな話題をそっと提案します。', imgLabel: '提案カード', img: '/lp/friends.PNG' },
 ];
 
 const STEPS: Step[] = [
@@ -73,7 +73,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
 
         .lp-page {
           --lp-pad-x: 20px;
-          --lp-hero-pad-top: 32px;
+          --lp-hero-pad-top: 0px;
           --lp-hero-cols: 1fr;
           --lp-h1-size: 34px;
           --lp-grid-cols-3: 1fr;
@@ -89,7 +89,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
         @media (min-width: 768px) {
           .lp-page {
             --lp-pad-x: 40px;
-            --lp-hero-pad-top: 70px;
+            --lp-hero-pad-top: 0px;
             --lp-h1-size: 44px;
             --lp-grid-cols-3: repeat(3,1fr);
             --lp-h2-size: 44px;
