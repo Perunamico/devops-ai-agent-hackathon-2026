@@ -37,8 +37,9 @@ const LEGAL_TEXTS: Record<LegalKey, string> = {
 };
 
 const FEATURES: Feature[] = [
-  { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '安心して覚える', body: 'あなたの「好き」や大切なことを、AIペットがそっと覚えます。', imgLabel: '安心設計' },
-  { icon: '✎', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '共有する前に確認', body: '記憶ごとに共有・編集・非共有を選べるから、プライバシーも安心。', imgLabel: '確認フロー' },
+  { icon: '✓', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '会話から覚える', body: 'あなたの「好き」や大切なことを、AIペットがそっと覚えます。', imgLabel: '安心設計' },
+  { icon: '✎', iconColor: '#3B7BF0', ring: '#C6DAF9', title: 'プライバシーに配慮', body: '記憶ごとに共有・非共有を選べるから、プライバシーも安心。', imgLabel: '確認フロー' },
+  { icon: '((•))', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '鳴き声で相手と交流', body: '近くの相手とはAIペット同士の鳴き声で交流。話した記憶を交換します。', imgLabel: '鳴き声通信' },
   { icon: '👥', iconColor: '#3B7BF0', ring: '#C6DAF9', title: '共通の話題を発見', body: '友だちのAIペットとつながり、共通の話題のきっかけを提案。', imgLabel: '話題の発見' },
   { icon: '💡', iconColor: '#F0A93B', ring: '#F7DFB4', title: '話題のヒントを提案', body: 'AIペットが会話のきっかけになりそうな話題をそっと提案します。', imgLabel: '提案カード' },
   { icon: '🌱', iconColor: '#1F9E8C', ring: '#B9E4DC', title: '育つほど、深まる関係', body: '記憶が増えるほど、AIペットとの会話も、友だちとの関係も深まっていきます。', imgLabel: '育成イメージ' },
@@ -74,7 +75,6 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
           --lp-hero-pad-top: 32px;
           --lp-hero-cols: 1fr;
           --lp-h1-size: 34px;
-          --lp-hero-visual-min-h: 380px;
           --lp-grid-cols-3: 1fr;
           --lp-h2-size: 28px;
           --lp-cta-pad-y: 7px;
@@ -90,7 +90,6 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
             --lp-pad-x: 40px;
             --lp-hero-pad-top: 70px;
             --lp-h1-size: 44px;
-            --lp-hero-visual-min-h: 560px;
             --lp-grid-cols-3: repeat(3,1fr);
             --lp-h2-size: 44px;
             --lp-cta-pad-y: 13px;
@@ -167,7 +166,7 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
           </div>
 
           {/* hero visual */}
-          <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--lp-hero-visual-min-h)' }}>
+          <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
             <span className="lp-star" style={{ position: 'absolute', top: 60, left: '2%', color: '#7FB0F5', fontSize: 26, animation: 'lp-twinkle 3.2s ease-in-out infinite' }}>✦</span>
             <span className="lp-star" style={{ position: 'absolute', top: '34%', left: '-2%', color: '#A9C8F7', fontSize: 18, animation: 'lp-twinkle 4s ease-in-out infinite .6s' }}>✦</span>
             <span style={{ position: 'absolute', top: 8, right: '16%', color: '#7FB0F5', fontSize: 22, animation: 'lp-twinkle 3.6s ease-in-out infinite .9s' }}>✦</span>
