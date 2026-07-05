@@ -102,7 +102,7 @@ function TopNav() {
   // 交流成立中はホームへの戻りバーを出さない（Issue #103）。バイバイで終える導線に一本化する。
   if (interactionActive) return null;
 
-  // ホーム以外（記憶/ひみつ画面を含む）は上部にホーム戻りバーを表示する。
+  // ホーム以外（記憶/ひみつ画面を含む）は下部にホーム戻りバーを表示する。
   if (screen !== 'home') {
     return (
       <nav className="side-nav side-nav--sub" style={{ willChange: 'transform' }}>
@@ -112,6 +112,7 @@ function TopNav() {
         >
           <img src="/icons/home.png" className="w-10 h-10 object-contain" alt="" />
           ホーム
+          <img src="/icons/home.png" className="w-10 h-10 object-contain" alt="" />
         </button>
       </nav>
     );
@@ -755,7 +756,7 @@ export default function App({ initialPet = null }: { initialPet?: PetResponse | 
     <AppContext.Provider value={ctx}>
       <div className="app-shell">
         <TopNav />
-        <div className={(screen === 'home' && homeLoading) ? 'app-content' : screen === 'home' ? 'app-content nav-bottom' : 'app-content nav-top'}>
+        <div className={(screen === 'home' && homeLoading) ? 'app-content' : screen === 'home' ? 'app-content nav-bottom' : 'app-content nav-sub-bottom'}>
 
           {renderScreen()}
         </div>

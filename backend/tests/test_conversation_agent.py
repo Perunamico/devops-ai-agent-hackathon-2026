@@ -7,6 +7,7 @@ from app.agents.conversation_agent import (
     ConversationAgent,
     _render_memory_summary,
     _should_inject_memory,
+    _trim_reply,
 )
 
 
@@ -61,6 +62,20 @@ def test_chat_returns_natural_reply_and_does_not_classify_synchronously():
     db.add_review_required.assert_not_called()
 
 
+def test_chat_trims_reply_that_exceeds_bubble_limit():
+    long_reply = "写真いいね。" + "とっても素敵な話だなあと思うよ。" * 10 + "どんなものを撮るのが好き？"
+    agent, _ = make_agent(reply={
+        "reply": long_reply,
+        "intent": "interest_discovery",
+        "ui_hint": {"emotion": "curious", "animation": "stretch"},
+    })
+
+    result = agent.chat("user1", "最近写真にハマってる")
+
+    assert len(result.reply) <= 100
+    assert result.reply.endswith("。")
+
+
 def test_chat_falls_back_when_reply_generation_fails():
     agent, db = make_agent(raise_error=True)
 
@@ -69,6 +84,20 @@ def test_chat_falls_back_when_reply_generation_fails():
     assert result.reply
     assert result.memory is None
     db.save_chat_message.assert_called_once()
+
+
+def test_trim_reply_cuts_at_sentence_boundary_within_limit():
+    text = "あ" * 50 + "。" + "い" * 50 + "。"
+    assert _trim_reply(text, limit=60) == "あ" * 50 + "。"
+
+
+def test_trim_reply_keeps_short_text_unchanged():
+    assert _trim_reply("そうなんだ！", limit=100) == "そうなんだ！"
+
+
+def test_trim_reply_keeps_first_sentence_when_no_ending_within_limit():
+    text = "あ" * 80 + "。"
+    assert _trim_reply(text, limit=60) == text
 
 
 def test_render_memory_summary_formats_profiles():

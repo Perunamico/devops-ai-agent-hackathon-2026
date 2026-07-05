@@ -99,7 +99,7 @@ declare global {
     interimResults: boolean;
     onresult: ((event: SpeechRecognitionEvent) => void) | null;
     onend: (() => void) | null;
-    onerror: ((event: Event) => void) | null;
+    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
     start(): void;
     stop(): void;
     abort(): void;
@@ -292,7 +292,16 @@ export default function HomeScreen() {
       setListening(false);
     };
     recog.onend = () => setListening(false);
-    recog.onerror = () => setListening(false);
+    recog.onerror = (e: SpeechRecognitionErrorEvent) => {
+      setListening(false);
+      // 無音・手動中断はよくある正常系なので吹き出しは出さない
+      if (e.error === 'no-speech' || e.error === 'aborted') return;
+      setPetBubble(
+        e.error === 'not-allowed' || e.error === 'service-not-allowed'
+          ? 'マイクを許可すると音声入力できるよ！'
+          : 'うまく聞き取れなかった…もう一度試してね'
+      );
+    };
     recognitionRef.current = recog;
     recog.start();
     setListening(true);

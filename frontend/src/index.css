@@ -45,7 +45,7 @@ body {
 :root {
   --pet-size: 40vh;
   --nav-bottom: 5rem;   /* 下ナビ(home)の高さ分。コンテンツ下余白・高さ計算に使う */
-  --nav-top: 3.5rem;    /* 上戻りバー(他画面)の高さ分 */
+  --nav-top: 3.5rem;    /* 下部「ホーム」戻りバー(他画面)の高さ分 */
   --nav-side: 0px;      /* 左サイドバー幅。スマホは0、PC幅で有効化 */
 }
 
@@ -427,8 +427,9 @@ body {
   background: #fff;
 }
 /* コンテンツ側はナビの固定バー分だけ余白を空ける(変数経由) */
-.app-content.nav-bottom { padding-bottom: var(--nav-bottom); }
-.app-content.nav-top    { padding-top: var(--nav-top); }
+.app-content.nav-bottom     { padding-bottom: var(--nav-bottom); }
+/* 他画面の「ホーム」バーは下部固定。高さは従来の --nav-top のまま、位置だけ下へ */
+.app-content.nav-sub-bottom { padding-bottom: var(--nav-top); }
 
 @media (min-width: 768px) {
   /* 左サイドバー + 従来のスマホ幅(28rem)コンテンツ を横に並べ、全体を中央寄せ。
@@ -462,11 +463,12 @@ body {
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
 }
-.side-nav--sub {             /* 他画面: 旧 上戻りバー(h-14, px-4) */
-  left: 0; right: 0; top: 0;
+.side-nav--sub {             /* 他画面: 下部固定の「ホーム」バー(h-14) */
+  left: 0; right: 0; bottom: 0;
   height: 3.5rem;
   display: flex;
   align-items: center;
+  justify-content: center;
   padding-left: 1rem;
   padding-right: 1rem;
 }
@@ -485,7 +487,7 @@ body {
   }
   .side-nav--home { height: auto; bottom: auto; padding: 0.5rem; }
   .side-nav--home button { flex: 0 0 auto; padding-top: 0.5rem; padding-bottom: 0.5rem; }
-  .side-nav--sub { height: auto; top: auto; align-items: stretch; padding: 0.5rem; }
+  .side-nav--sub { height: auto; bottom: auto; align-items: stretch; padding: 0.5rem; }
   .side-nav--sub button { flex-direction: column; gap: 0.25rem; justify-content: center; }
 }
 
