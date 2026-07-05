@@ -27,27 +27,8 @@ const AVAILABLE_ANIMS: AnimName[] = [
 
 const INTERLUDE_ANIMS: AnimName[] = ['stretch', 'hand_stretch', 'shake'];
 
-const CHAT_FILLERS = [
-  'わほほーい',
-  'わっふふふ',
-  'わおーーん',
-  'きゃふんっ',
-  'わふーん',
-  'にゃー',
-  'わんだー',
-  'わんわん',
-] as const;
-
 function pickInterlude(): AnimName {
   return INTERLUDE_ANIMS[Math.floor(Math.random() * INTERLUDE_ANIMS.length)];
-}
-
-function pickChatFiller(): string {
-  return CHAT_FILLERS[Math.floor(Math.random() * CHAT_FILLERS.length)];
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // --- <video>(白背景 mp4) ベースのアニメーション ---
@@ -246,23 +227,14 @@ export default function HomeScreen() {
     setCurrentAnim(pickInterlude());
     setSubmitting(true);
 
-    // LLM の返答が 1 秒以内に届けばフィラーは出さず、届かなければ
-    // 無言の待ち時間を避けるためルールベースの短いフィラーを表示する。
-    let replied = false;
-    sleep(1000).then(() => {
-      if (!replied) setPetBubble(pickChatFiller());
-    });
-
     try {
       const result = await sendChat({ message });
-      replied = true;
       setPetBubble(result.reply);
       setContent('');
       if (result.memory?.category === 'review_required') {
         getReviewItems().then((items) => setReviewCount(items.length)).catch(() => {});
       }
     } catch {
-      replied = true;
       setPetBubble('うまく聞き取れなかった...もう一度話しかけて！');
     } finally {
       setSubmitting(false);
