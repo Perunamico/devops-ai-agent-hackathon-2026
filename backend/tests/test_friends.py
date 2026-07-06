@@ -13,7 +13,7 @@ def test_no_sessions_returns_empty():
     assert overview["friends"] == []
     assert overview["friend_count"] == 0
     assert overview["common_topic_count"] == 0
-    assert overview["last_interaction_at"] is None
+    assert overview["interaction_count"] == 0
 
 
 def test_friends_come_only_from_own_sessions():
@@ -45,11 +45,11 @@ def test_same_partner_multiple_sessions_counts_once_with_latest_data():
     assert friend["pet_name"] == "ミライ"
     # 最新セッションの分析を採用し、表示はベスト3に切り詰める
     assert friend["common_topics"] == ["宇宙", "ねこ", "AIの未来"]
-    assert friend["last_interacted_at"] == "2026-07-02T00:00:00+00:00"
     assert friend["session_id"] == new
     # 統計のトピック数は最新分析の全件（4件）
     assert overview["common_topic_count"] == 4
-    assert overview["last_interaction_at"] == "2026-07-02T00:00:00+00:00"
+    # 交流回数はともだち数ではなくセッション数（同じ相手との2回も数える）
+    assert overview["interaction_count"] == 2
 
 
 def test_friends_sorted_by_latest_interaction_and_topics_summed():
@@ -69,7 +69,7 @@ def test_friends_sorted_by_latest_interaction_and_topics_summed():
     assert [f["user_id"] for f in overview["friends"]] == ["C", "B"]
     assert overview["friend_count"] == 2
     assert overview["common_topic_count"] == 3
-    assert overview["last_interaction_at"] == "2026-07-02T00:00:00+00:00"
+    assert overview["interaction_count"] == 2
 
 
 def test_comment_prefers_personal_message_over_common():

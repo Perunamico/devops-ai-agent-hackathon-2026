@@ -80,7 +80,6 @@ class FriendItem(BaseModel):
     """交流（鳴き声/QR通信）が成立した相手1人ぶんの表示データ。"""
     user_id: str
     pet_name: str
-    last_interacted_at: str
     # 直近の交流分析から出た共通の話題（表示用ベスト3）
     common_topics: list[str] = []
     # 直近の交流で本人向けに生成されたメッセージ（無ければ共通メッセージ）
@@ -94,5 +93,5 @@ class FriendsResponse(BaseModel):
     friend_count: int = 0
     # 各ともだちとの直近分析の共通トピック数の合計
     common_topic_count: int = 0
-    # 最後に交流が成立した日時（ISO8601、交流が無ければ null）
-    last_interaction_at: str | None = None
+    # 交流（鳴き声/QR通信）が成立したセッションの総数
+    interaction_count: int = 0

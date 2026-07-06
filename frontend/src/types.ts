@@ -172,7 +172,6 @@ export interface ReportResponse {
 export interface FriendItem {
   user_id: string;
   pet_name: string;
-  last_interacted_at: string;
   // 直近の交流分析から出た共通の話題（ベスト3）
   common_topics: string[];
   // 直近の交流で本人向けに生成されたメッセージ（無ければ共通メッセージ）
@@ -185,6 +184,6 @@ export interface FriendsResponse {
   friends: FriendItem[];
   friend_count: number;
   common_topic_count: number;
-  // 最後に交流が成立した日時（ISO8601、交流が無ければ null）
-  last_interaction_at: string | null;
+  // 交流（鳴き声/QR通信）が成立したセッションの総数
+  interaction_count: number;
 }

@@ -3,7 +3,9 @@ import type { CSSProperties } from 'react';
 import { getFriends } from '../api';
 import type { FriendsResponse } from '../types';
 import FriendTopicsModal from './FriendTopicsModal';
-import { ClockIcon, TINTS, relativeLabel, relativeParts } from './friendsShared';
+
+// アバター背景はデザインのパステル3色を順繰りに使う。
+const TINTS = ['#e7ecfb', '#e5f1ea', '#ede8fa'];
 
 // ともだち画面。デザインの PNG フレーム素材（frontend/public/icons/*）と stop.png を使って
 // モックアップに合わせて装飾している。
@@ -46,7 +48,7 @@ export default function FriendsScreen() {
   const stats: { label: string; value: string; unit: string }[] = [
     { label: 'ともだち数', value: loaded ? String(data.friend_count) : '-', unit: '人' },
     { label: '共通の話題', value: loaded ? String(data.common_topic_count) : '-', unit: '件' },
-    { label: '最近の交流', ...(loaded ? relativeParts(data.last_interaction_at) : { value: '-', unit: '' }) },
+    { label: '交流回数', value: loaded ? String(data.interaction_count) : '-', unit: '回' },
   ];
 
   return (
@@ -135,14 +137,8 @@ export default function FriendsScreen() {
                 />
               </div>
               <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-                <div style={{ fontSize: 21, fontWeight: 800, color: '#4670e6', lineHeight: 1.1, marginBottom: 5 }}>
+                <div style={{ fontSize: 21, fontWeight: 800, color: '#4670e6', lineHeight: 1.1, marginBottom: 7 }}>
                   {friend.pet_name}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 7 }}>
-                  <ClockIcon />
-                  <span style={{ fontSize: 11.5, color: '#93a4c4', fontWeight: 500 }}>
-                    最後に交流したのは {relativeLabel(friend.last_interacted_at)}
-                  </span>
                 </div>
                 {/* 分析がまだ無い交流では共通の話題が空になるため、見出しごと出し分ける */}
                 {friend.common_topics.length > 0 && (

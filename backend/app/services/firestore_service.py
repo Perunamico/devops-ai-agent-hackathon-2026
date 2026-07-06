@@ -14,8 +14,8 @@ _PROFILE_CONTENT_ID_PREFIX = "private-profile-"
 # find_active_session_by_pair が「同一の交流試行」とみなして再利用してよい猶予時間。
 # 音声/QRの同時照合による二重セッション生成を防ぐためだけの窓なので、鳴き声トークンの
 # 有効期限（TOKEN_EXPIRE_SECONDS=60秒）を十分にカバーできれば足りる。これを超えて
-# 古い "active" セッションを再利用すると、日をまたいだ再交流のたびに古いセッションが
-# 使い回され、ともだち一覧の「最後に交流した時間」が更新されなくなる。
+# 古い "active" セッションを再利用すると、日をまたいだ再交流が新しいセッションとして
+# 記録されず、ともだち一覧の交流回数や直近の分析結果が更新されなくなる。
 _ACTIVE_SESSION_REUSE_WINDOW_SECONDS = 120
 
 
@@ -727,7 +727,6 @@ class FirestoreService:
             friends.append({
                 "user_id": other_id,
                 "pet_name": (pet or {}).get("name") or "なまえのないペット",
-                "last_interacted_at": session.get("created_at", ""),
                 "common_topics": topics[:3],
                 "comment": comment,
                 "session_id": session.get("id", ""),
@@ -737,7 +736,7 @@ class FirestoreService:
             "friends": friends,
             "friend_count": len(friends),
             "common_topic_count": topic_total,
-            "last_interaction_at": sessions[0].get("created_at") if sessions else None,
+            "interaction_count": len(sessions),
         }
 
     # ---- report cards ----
