@@ -29,8 +29,14 @@ _CLASSIFY_PROMPT = """\
   相槌は単独で項目を作らず、直前のエピソードの熱量(intensity)を見極める手がかりにする。
 - **既存プロフィールと同じ・近い話題なら、新しく作らず既存のトピック名をそのまま使って1件に統合する**（コンパクション）。
   似た話題を別トピックに細かく分けない（例:「睡眠」と「就寝予定」、「カフェ」と「カフェ作業」を別にしない）。
+- 既存プロフィールに `"unconfirmed": true` が付いているもの（ユーザーが選んだだけでまだ深掘りできていないラベル由来の項目）を
+  更新する場合は、`depth_confirmed` を判定する。
+  今回の会話で具体的な理由・エピソード・文脈（reason/example/context など）を新たに聞けていれば `depth_confirmed: true`。
+  同じ話題に触れただけ・再確認しただけで具体的な中身が増えていなければ `depth_confirmed: false`。
+  既存に unconfirmed が付いていない場合・新規トピックの場合は `depth_confirmed: false` のままでよい（意味を持たない）。
 - **性格・心理の言い換えを禁止**する。「〜を好む人」「気持ちが良いと感じている」のような人柄・内面の決めつけはしない。
-  「ユーザーが何を話したか」を事実ベースで1行にする（例:「朝すっきり起きられたと話した」）。
+  事実ベースの内容を「ご主人によると〜〜〜なんだってね。」のような、ペット視点の伝聞口調の1文にする
+  （例:「ご主人によると朝すっきり起きられたんだってね。」）。「ユーザーは〜と話した。」という書き方はしない。
 - 事実や状況を嗜好と決めつけない（例:「居酒屋でバイトしている」=「居酒屋が好き」ではない）。
 
 直近の会話（古い→新しい）:
@@ -71,7 +77,8 @@ _CLASSIFY_PROMPT = """\
 - preference・intensity は決めつけない。あくまで会話に表れた範囲でよい。
 
 各エピソードの contents には、**そのエピソードの1行要約を1件だけ**入れる（reason / emotion などに細かく分割しない）。
-- label は "example" を使い、content に「ユーザーが話した内容の事実ベースの1行要約」を書く。
+- label は "example" を使い、content には「ご主人によると〜〜〜なんだってね。」の形式で、
+  事実ベースの1行要約を書く（「ユーザーは〜と話した。」という書き方はしない）。
 - content は **80字以内**を目安に簡潔に。文末は「。」で終える。
 - 「〜を好む人」「〜と感じている」のような性格・内面の言い換えはしない。
 - shareability（共有してよい範囲）と confidence を必ず付ける。
@@ -91,12 +98,16 @@ confidence は low | medium | high。推測が強いほど low にする。
 - blocked: 連絡先・住所・センシティブな個人情報・共有禁止トピック
 
 重要: 情報が少ない・発話が短い・相槌だから、という理由で review_required にしてはいけない。
-その場合は private にする。review_required は健康・宗教・政治・収入・家庭環境など
+その場合は private にする。review_required は健康・宗教・政治・収入・家庭環境や、
+地名・大学名・学校名・勤務先名など個人の特定につながり得る固有名詞を含む内容など、
 センシティブで共有可否が曖昧な内容に限る。
 
 ## ガードレール
 健康・宗教・政治・性的嗜好・収入・家庭環境・正確な居場所・他人の個人情報は、
 原則 private か review_required にし、共通点探しには使わない（contents の shareability も private にする）。
+**地名（市区町村・駅名・地域名など）・大学名・学校名・勤務先名**が発話に含まれる場合は、
+個人の特定につながり得るため category を review_required にし、safe_summary には
+その固有名詞を含めず「ご主人によると〜の話をしていたみたい。」程度に抽象化した、伝聞口調の要約にする。
 共有可否が未確認のものは shareability=unknown とする。
 ユーザーの人格を断定しない。
 
@@ -107,7 +118,7 @@ confidence は low | medium | high。推測が強いほど low にする。
   "values": [],
   "recent_topics": ["きっかけになりやすい最近の話題"],
   "conversation_style_notes": "",
-  "safe_summary": "review_requiredのときだけ、何の話題かを個人情報抜きで1行。それ以外は空文字",
+  "safe_summary": "review_requiredのときだけ、個人情報抜きで「ご主人によると〜なんだってね。」のような伝聞口調1行にする。それ以外は空文字",
   "blocked_reason": "blockedの場合のみ理由",
   "review_reason": "review_requiredの場合のみ理由",
   "review_category_large": "review_requiredのとき、その話題のカテゴリーを上の100個から必ず1つ選ぶ（カードのカテゴリー表示に使う）",
@@ -119,6 +130,7 @@ confidence は low | medium | high。推測が強いほど low にする。
       "category_small": "小カテゴリー（自由記述）",
       "preference": "like|interested|dislike|conditional",
       "intensity": "low|medium|high",
+      "depth_confirmed": "既存がunconfirmedのトピックを更新するときだけ判定（trueなら深掘り完了）。それ以外はfalse",
       "contents": [
         {{
           "label": "reason|emotion|context|social_mode|boundary|example|related_topic",
@@ -388,7 +400,7 @@ class MemoryAgent:
                     "preferred_suggestion_style": raw.get("preferred_suggestion_style", ""),
                 })
         except Exception as e:
-            logger.error("LLM4 memory update failed: %s", e)
+            logger.error("feedback memory update failed: %s", e)
 
 
 _VALID_LABELS = {"reason", "emotion", "context", "social_mode", "boundary", "example", "related_topic"}
@@ -452,12 +464,16 @@ def _merge_profiles_by_topic(existing: list[dict], new: list[dict]) -> list[dict
             index[key] = i
     for np in new:
         key = _topic_key(np)
+        # depth_confirmed は unconfirmed 解除を判定するための一時的な信号。永続化はしない。
+        depth_confirmed = np.pop("depth_confirmed", False)
         if key and key in index:
             old = result[index[key]]
-            # ラベル由来トピックが会話で深掘りされ置換される時は、origin は保つが
-            # unconfirmed は引き継がない＝確認済みにする（「（未確認）」表示が外れる）。
             if old.get("origin") == "label" and np.get("origin") != "label":
                 np = {**np, "origin": "label"}
+                # ラベル由来の未確認トピックは、会話で深掘りが完了したと判定された時だけ
+                # unconfirmed を外す（「（未確認）」表示が消える）。浅い言及では維持する。
+                if old.get("unconfirmed") and not depth_confirmed:
+                    np["unconfirmed"] = True
             result[index[key]] = np
         else:
             result.append(np)
@@ -515,6 +531,7 @@ def _normalize_profiles(raw_profiles) -> list[dict]:
             "category_small": str(p.get("category_small") or ""),
             "preference": pref if pref in _VALID_PREFERENCE else "interested",
             "intensity": intensity if intensity in _VALID_INTENSITY else "medium",
+            "depth_confirmed": bool(p.get("depth_confirmed")),
             "contents": contents,
         })
     return profiles
