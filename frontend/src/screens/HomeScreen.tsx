@@ -144,6 +144,8 @@ export default function HomeScreen() {
   // マイクの解放と再取得がほぼ同時に走り、audio-capture/aborted で即終了したり
   // continuous:false の無音判定が即座に発火してオフになることがあるため。
   const micProbeStreamRef = useRef<MediaStream | null>(null);
+  // ユーザーがマイクボタンで手動停止したか（onend で「聞き取れなかった」誤爆を防ぐ）
+  const manualStopRef = useRef(false);
 
   function releaseMicProbe() {
     micProbeStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -298,6 +300,7 @@ export default function HomeScreen() {
     }
 
     if (listening) {
+      manualStopRef.current = true;
       recognitionRef.current?.abort();
       setListening(false);
       return;
@@ -329,6 +332,12 @@ export default function HomeScreen() {
       }
     }
 
+    manualStopRef.current = false;
+    // 認識結果を1件でも受け取れたか。誤って何も表示されないまま無音終了するのを防ぐため、
+    // onend 時点でこれが false かつ手動停止でもなければユーザーに知らせる。
+    let gotResult = false;
+    let errorShown = false;
+
     const recog = new SR();
     recog.lang = 'ja-JP';
     recog.continuous = false;
@@ -336,19 +345,28 @@ export default function HomeScreen() {
     // 実キャプチャが始まったタイミングで許可確認用ストリームを解放する
     recog.onstart = () => releaseMicProbe();
     recog.onresult = (e: SpeechRecognitionEvent) => {
-      const transcript = e.results[0][0].transcript;
-      setContent((prev) => prev + transcript);
+      const transcript = e.results[0]?.[0]?.transcript ?? '';
+      if (transcript) {
+        gotResult = true;
+        setContent((prev) => prev + transcript);
+      }
       setListening(false);
     };
     recog.onend = () => {
       setListening(false);
       releaseMicProbe(); // onstart が発火せず失敗した場合の保険
+      // 音声は拾えたのに結果が得られないまま終了した場合、無反応に見えないよう知らせる
+      if (!gotResult && !manualStopRef.current && !errorShown) {
+        setPetBubble('うまく聞き取れなかった…もう一度話してみてね');
+      }
     };
     recog.onerror = (e: SpeechRecognitionErrorEvent) => {
       setListening(false);
       releaseMicProbe(); // onstart が発火せず失敗した場合の保険
-      // 無音・手動中断はよくある正常系なので吹き出しは出さない
-      if (e.error === 'no-speech' || e.error === 'aborted') return;
+      // 手動中断はよくある正常系なので吹き出しは出さない（無音は onend 側でまとめて拾う）
+      if (e.error === 'aborted') return;
+      if (e.error === 'no-speech') return;
+      errorShown = true;
       setPetBubble(
         e.error === 'not-allowed' || e.error === 'service-not-allowed'
           ? 'マイクを許可すると音声入力できるよ！'
