@@ -301,7 +301,10 @@ export default function HomeScreen() {
 
     if (listening) {
       manualStopRef.current = true;
-      recognitionRef.current?.abort();
+      // abort() は認識中の音声を一切処理せず破棄してしまうため、話し終えて
+      // ボタンをもう一度押すという自然な操作で結果が握りつぶされていた。
+      // stop() ならここまで捉えた音声から結果を確定させ、onresult を発火させる。
+      recognitionRef.current?.stop();
       setListening(false);
       return;
     }
