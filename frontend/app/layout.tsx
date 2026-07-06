@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import '../src/index.css';
+import { AppProvider } from '../src/AppContext';
 
 export const metadata: Metadata = {
   title: 'Topipet',
@@ -21,7 +22,9 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <AppProvider>{children}</AppProvider>
+      </body>
     </html>
   );
 }

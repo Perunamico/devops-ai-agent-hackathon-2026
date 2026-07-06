@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../AppContext';
 import { sendChat, getReviewItems, createPet, putSelectedLabels } from '../api';
 
 const NAME_MAX = 12;

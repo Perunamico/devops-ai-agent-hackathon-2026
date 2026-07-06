@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useApp } from '../App';
+import { useApp } from '../AppContext';
 import { getAuthState, signOutUser, type AuthState } from '../firebase';
 import { getSelectedLabels, putSelectedLabels } from '../api';
 import type { SelectedLabel } from '../types';
@@ -27,7 +27,7 @@ const SHEET_TITLES: Record<SheetKey, string> = {
 };
 
 export default function SettingsScreen() {
-  const { setScreen, setPet } = useApp();
+  const { setPet } = useApp();
   const [auth, setAuth] = useState<AuthState | null>(null);
   const [sheet, setSheet] = useState<SheetKey | null>(null);
   const [confirmLogout, setConfirmLogout] = useState(false);
@@ -76,9 +76,8 @@ export default function SettingsScreen() {
       // localStorage が使えない環境でも続行
     }
     setPet(null);
-    setScreen('home');
-    // 状態を完全にリセットするためリロード
-    window.location.reload();
+    // 状態を完全にリセットするためハード遷移で入口（LP）へ戻る
+    window.location.replace('/');
   }
 
   function statusLabel(): string {
