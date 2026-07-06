@@ -102,7 +102,6 @@ declare global {
     lang: string;
     continuous: boolean;
     interimResults: boolean;
-    onstart: (() => void) | null;
     onresult: ((event: SpeechRecognitionEvent) => void) | null;
     onend: (() => void) | null;
     onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
@@ -139,18 +138,8 @@ export default function HomeScreen() {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   // マイク許可ダイアログ表示中（getUserMedia 待ち）の二重起動を防ぐ
   const micRequestingRef = useRef(false);
-  // 許可確認用に取得した MediaStream。SpeechRecognition 自身のキャプチャが
-  // 立ち上がる(onstart)まで保持する。ここで即 stop すると、OS/ブラウザ側で
-  // マイクの解放と再取得がほぼ同時に走り、audio-capture/aborted で即終了したり
-  // continuous:false の無音判定が即座に発火してオフになることがあるため。
-  const micProbeStreamRef = useRef<MediaStream | null>(null);
   // ユーザーがマイクボタンで手動停止したか（onend で「聞き取れなかった」誤爆を防ぐ）
   const manualStopRef = useRef(false);
-
-  function releaseMicProbe() {
-    micProbeStreamRef.current?.getTracks().forEach((track) => track.stop());
-    micProbeStreamRef.current = null;
-  }
 
   // pet が未作成なら命名モード。名付け完了後に 'active' へ移行する。
   const [phase, setPhase] = useState<'naming' | 'active'>(pet ? 'active' : 'naming');
@@ -318,10 +307,14 @@ export default function HomeScreen() {
     if (navigator.mediaDevices?.getUserMedia) {
       micRequestingRef.current = true;
       try {
-        // 目的は許可の取得のみだが、ここで即座に track を stop すると
-        // SpeechRecognition 側のマイク取得と衝突しやすいため、
-        // 実際にキャプチャが始まる(recog.onstart)まで保持しておく。
-        micProbeStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // 目的は許可の取得のみなのですぐ解放するが、直後に SpeechRecognition が
+        // 同じマイクを取得しようとすると、OS/ブラウザ側でまだハードウェアの解放が
+        // 終わっておらず無音のまま渡ってしまうことがある（無音判定が数秒で発火し、
+        // 話した内容が一切認識されない不具合の原因）。解放後に少し待ってから
+        // start() することで、マイクの明け渡しを確実に完了させる。
+        stream.getTracks().forEach((track) => track.stop());
+        await new Promise((r) => setTimeout(r, 300));
       } catch (err) {
         setPetBubble(
           err instanceof DOMException &&
@@ -345,8 +338,6 @@ export default function HomeScreen() {
     recog.lang = 'ja-JP';
     recog.continuous = false;
     recog.interimResults = false;
-    // 実キャプチャが始まったタイミングで許可確認用ストリームを解放する
-    recog.onstart = () => releaseMicProbe();
     recog.onresult = (e: SpeechRecognitionEvent) => {
       const transcript = e.results[0]?.[0]?.transcript ?? '';
       if (transcript) {
@@ -357,7 +348,6 @@ export default function HomeScreen() {
     };
     recog.onend = () => {
       setListening(false);
-      releaseMicProbe(); // onstart が発火せず失敗した場合の保険
       // 音声は拾えたのに結果が得られないまま終了した場合、無反応に見えないよう知らせる
       if (!gotResult && !manualStopRef.current && !errorShown) {
         setPetBubble('うまく聞き取れなかった…もう一度話してみてね');
@@ -365,7 +355,6 @@ export default function HomeScreen() {
     };
     recog.onerror = (e: SpeechRecognitionErrorEvent) => {
       setListening(false);
-      releaseMicProbe(); // onstart が発火せず失敗した場合の保険
       // 手動中断はよくある正常系なので吹き出しは出さない（無音は onend 側でまとめて拾う）
       if (e.error === 'aborted') return;
       if (e.error === 'no-speech') return;
