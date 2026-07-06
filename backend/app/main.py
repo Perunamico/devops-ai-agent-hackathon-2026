@@ -415,7 +415,7 @@ def get_friends(
         friends=[FriendItem(**f) for f in data["friends"]],
         friend_count=data["friend_count"],
         common_topic_count=data["common_topic_count"],
-        last_interaction_at=data["last_interaction_at"],
+        interaction_count=data["interaction_count"],
     )
 
 

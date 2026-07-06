@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getAnalysis } from '../api';
 import type { ExchangeAnalysisResponse, FriendItem } from '../types';
-import { ClockIcon, relativeLabel } from './friendsShared';
-
 // 「話題を見る」ボタンから開くボトムシート。FriendsScreen と同じ配色/フォントで
 // 統一感を出し、AnalysisScreen のような硬いレポート調にはしない。
 // データは既存の /exchanges/{session_id}/analysis（EncounterAgent が交流成立時に
@@ -135,14 +133,8 @@ export default function FriendTopicsModal({
               <img src="/png/stop.png" alt="" style={{ width: '82%', height: '82%', objectFit: 'contain' }} />
             </div>
             <div style={{ flex: '1 1 auto', minWidth: 0 }}>
-              <div style={{ fontSize: 17, fontWeight: 800, color: '#4670e6', lineHeight: 1.1, marginBottom: 4 }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#4670e6', lineHeight: 1.1 }}>
                 🐾 {friend.pet_name}
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <ClockIcon />
-                <span style={{ fontSize: 11, color: '#93a4c4', fontWeight: 500 }}>
-                  最後に交流したのは {relativeLabel(friend.last_interacted_at)}
-                </span>
               </div>
             </div>
           </div>
