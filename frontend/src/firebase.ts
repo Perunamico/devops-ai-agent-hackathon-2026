@@ -76,10 +76,24 @@ export async function getAuthState(): Promise<AuthState> {
 
 let _auth: Auth | null = null;
 
+// Firebase Hosting は同一プロジェクトの全ドメイン（本番/dev/プレビューチャンネル）で
+// `/__/auth/handler` `/__/auth/iframe` を自動的に配信する。authDomain を env の固定値
+// （本番の *.firebaseapp.com）のままにしていると、dev/プレビュー環境ではアプリのドメインと
+// authDomain が別オリジンになり、Safari の ITP 等でリダイレクト結果 (getRedirectResult) が
+// サイレントに失敗する（エラーも出ずユーザー情報が来ない）。今アクセスしているホスト自体が
+// Firebase Hosting ドメインなら、そのホストを authDomain として使うことで常に同一オリジンにする。
+function resolveAuthDomain(): string | undefined {
+  const host = window.location.hostname;
+  if (host.endsWith('.web.app') || host.endsWith('.firebaseapp.com')) return host;
+  return firebaseConfig.authDomain;
+}
+
 function getConfiguredAuth(): Auth | null {
   if (typeof window === 'undefined' || !isConfigured) return null;
   if (_auth) return _auth;
-  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  const app = getApps().length
+    ? getApps()[0]
+    : initializeApp({ ...firebaseConfig, authDomain: resolveAuthDomain() });
   try {
     // ローカル永続化: ログイン状態はブラウザに保存され、タブを閉じても・
     // 再訪しても維持される（サインアウトするまでログインしたまま）。
