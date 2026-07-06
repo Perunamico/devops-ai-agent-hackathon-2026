@@ -315,13 +315,8 @@ export default function HomeScreen() {
         // start() することで、マイクの明け渡しを確実に完了させる。
         stream.getTracks().forEach((track) => track.stop());
         await new Promise((r) => setTimeout(r, 300));
-      } catch (err) {
-        setPetBubble(
-          err instanceof DOMException &&
-            (err.name === 'NotAllowedError' || err.name === 'SecurityError')
-            ? 'マイクを許可すると音声入力できるよ！'
-            : 'うまく聞き取れなかった…もう一度試してね'
-        );
+      } catch {
+        // 吹き出しはペットのセリフ専用のため、マイク許可拒否などは通知せず静かに諦める
         return;
       } finally {
         micRequestingRef.current = false;
@@ -329,10 +324,6 @@ export default function HomeScreen() {
     }
 
     manualStopRef.current = false;
-    // 認識結果を1件でも受け取れたか。誤って何も表示されないまま無音終了するのを防ぐため、
-    // onend 時点でこれが false かつ手動停止でもなければユーザーに知らせる。
-    let gotResult = false;
-    let errorShown = false;
 
     const recog = new SR();
     recog.lang = 'ja-JP';
@@ -340,31 +331,11 @@ export default function HomeScreen() {
     recog.interimResults = false;
     recog.onresult = (e: SpeechRecognitionEvent) => {
       const transcript = e.results[0]?.[0]?.transcript ?? '';
-      if (transcript) {
-        gotResult = true;
-        setContent((prev) => prev + transcript);
-      }
+      if (transcript) setContent((prev) => prev + transcript);
       setListening(false);
     };
-    recog.onend = () => {
-      setListening(false);
-      // 音声は拾えたのに結果が得られないまま終了した場合、無反応に見えないよう知らせる
-      if (!gotResult && !manualStopRef.current && !errorShown) {
-        setPetBubble('うまく聞き取れなかった…もう一度話してみてね');
-      }
-    };
-    recog.onerror = (e: SpeechRecognitionErrorEvent) => {
-      setListening(false);
-      // 手動中断はよくある正常系なので吹き出しは出さない（無音は onend 側でまとめて拾う）
-      if (e.error === 'aborted') return;
-      if (e.error === 'no-speech') return;
-      errorShown = true;
-      setPetBubble(
-        e.error === 'not-allowed' || e.error === 'service-not-allowed'
-          ? 'マイクを許可すると音声入力できるよ！'
-          : 'うまく聞き取れなかった…もう一度試してね'
-      );
-    };
+    recog.onend = () => setListening(false);
+    recog.onerror = () => setListening(false);
     recognitionRef.current = recog;
     recog.start();
     setListening(true);
