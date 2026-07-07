@@ -93,62 +93,10 @@ function createVideoPlayer(video: HTMLVideoElement): AnimPlayer {
   };
 }
 
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
-  interface SpeechRecognition extends EventTarget {
-    lang: string;
-    continuous: boolean;
-    interimResults: boolean;
-    onstart: (() => void) | null;
-    onresult: ((event: SpeechRecognitionEvent) => void) | null;
-    onend: (() => void) | null;
-    onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
-    start(): void;
-    stop(): void;
-    abort(): void;
-  }
-  interface SpeechRecognitionEvent extends Event {
-    readonly results: SpeechRecognitionResultList;
-  }
-  interface SpeechRecognitionResultList {
-    readonly length: number;
-    item(index: number): SpeechRecognitionResult;
-    [index: number]: SpeechRecognitionResult;
-  }
-  interface SpeechRecognitionResult {
-    readonly length: number;
-    item(index: number): SpeechRecognitionAlternative;
-    [index: number]: SpeechRecognitionAlternative;
-    readonly isFinal: boolean;
-  }
-  interface SpeechRecognitionAlternative {
-    readonly transcript: string;
-    readonly confidence: number;
-  }
-}
-
-
 export default function HomeScreen() {
   const { pet, setPet, setHomeLoading, setNaming, setReviewCount, petBubble, setPetBubble, selectedLabels } = useApp();
   const [content, setContent] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  // マイク許可ダイアログ表示中（getUserMedia 待ち）の二重起動を防ぐ
-  const micRequestingRef = useRef(false);
-  // 許可確認用に取得した MediaStream。SpeechRecognition 自身のキャプチャが
-  // 立ち上がる(onstart)まで保持する。ここで即 stop すると、OS/ブラウザ側で
-  // マイクの解放と再取得がほぼ同時に走り、audio-capture/aborted で即終了したり
-  // continuous:false の無音判定が即座に発火してオフになることがあるため。
-  const micProbeStreamRef = useRef<MediaStream | null>(null);
-
-  function releaseMicProbe() {
-    micProbeStreamRef.current?.getTracks().forEach((track) => track.stop());
-    micProbeStreamRef.current = null;
-  }
 
   // pet が未作成なら命名モード。名付け完了後に 'active' へ移行する。
   const [phase, setPhase] = useState<'naming' | 'active'>(pet ? 'active' : 'naming');
@@ -289,77 +237,6 @@ export default function HomeScreen() {
     }
   }
 
-  async function toggleListening() {
-    const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!SR) {
-      // iOS Safari など Web Speech API 非対応のブラウザではボタンは表示するが通知する
-      alert('この端末・ブラウザは音声入力に対応していません。');
-      return;
-    }
-
-    if (listening) {
-      recognitionRef.current?.abort();
-      setListening(false);
-      return;
-    }
-
-    // 許可ダイアログ表示中に再タップされたら無視する
-    if (micRequestingRef.current) return;
-
-    // SpeechRecognition.start() はブラウザによってはマイク許可ダイアログを出さずに
-    // not-allowed で失敗するため、先に getUserMedia で明示的に許可を取る
-    // （交換機能 audio.ts と同じパターン）。mediaDevices が無い環境では従来どおり start() に任せる。
-    if (navigator.mediaDevices?.getUserMedia) {
-      micRequestingRef.current = true;
-      try {
-        // 目的は許可の取得のみだが、ここで即座に track を stop すると
-        // SpeechRecognition 側のマイク取得と衝突しやすいため、
-        // 実際にキャプチャが始まる(recog.onstart)まで保持しておく。
-        micProbeStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (err) {
-        setPetBubble(
-          err instanceof DOMException &&
-            (err.name === 'NotAllowedError' || err.name === 'SecurityError')
-            ? 'マイクを許可すると音声入力できるよ！'
-            : 'うまく聞き取れなかった…もう一度試してね'
-        );
-        return;
-      } finally {
-        micRequestingRef.current = false;
-      }
-    }
-
-    const recog = new SR();
-    recog.lang = 'ja-JP';
-    recog.continuous = false;
-    recog.interimResults = false;
-    // 実キャプチャが始まったタイミングで許可確認用ストリームを解放する
-    recog.onstart = () => releaseMicProbe();
-    recog.onresult = (e: SpeechRecognitionEvent) => {
-      const transcript = e.results[0][0].transcript;
-      setContent((prev) => prev + transcript);
-      setListening(false);
-    };
-    recog.onend = () => {
-      setListening(false);
-      releaseMicProbe(); // onstart が発火せず失敗した場合の保険
-    };
-    recog.onerror = (e: SpeechRecognitionErrorEvent) => {
-      setListening(false);
-      releaseMicProbe(); // onstart が発火せず失敗した場合の保険
-      // 無音・手動中断はよくある正常系なので吹き出しは出さない
-      if (e.error === 'no-speech' || e.error === 'aborted') return;
-      setPetBubble(
-        e.error === 'not-allowed' || e.error === 'service-not-allowed'
-          ? 'マイクを許可すると音声入力できるよ！'
-          : 'うまく聞き取れなかった…もう一度試してね'
-      );
-    };
-    recognitionRef.current = recog;
-    recog.start();
-    setListening(true);
-  }
-
   const bubbleText =
     phase === 'naming'
       ? 'はじめまして！ぼくの名前をつけてくれる？'
@@ -487,24 +364,6 @@ export default function HomeScreen() {
               className="w-full border-0 outline-none text-base text-gray-700 placeholder-gray-400 bg-transparent"
             />
           </div>
-          {phase === 'active' && (
-            <button
-              onClick={toggleListening}
-              type="button"
-              className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-colors
-                ${listening ? 'bg-red-500 animate-pulse' : 'bg-sky-500'}`}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="white"
-                className="w-6 h-6"
-              >
-                <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4z" />
-                <path d="M19 10a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-3.08A7 7 0 0 0 19 10z" />
-              </svg>
-            </button>
-          )}
           <button
             type="submit"
             disabled={!content.trim() || submitting}
