@@ -69,7 +69,6 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
       <style>{`
         @keyframes lp-floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-14px)}}
         @keyframes lp-twinkle{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
-        @keyframes lp-rippling{0%{transform:scale(.6);opacity:.7}100%{transform:scale(1.9);opacity:0}}
 
         .lp-page {
           --lp-pad-x: 20px;
@@ -219,22 +218,14 @@ export default function LandingScreen({ onLogin, onSignup }: { onLogin: () => vo
         {/* VIDEO SECTION */}
         <section id="video" style={{ background: 'linear-gradient(180deg,#EAF2FF,#F4F8FF)', padding: '96px var(--lp-pad-x)' }}>
           <div style={{ maxWidth: 1000, margin: '0 auto', textAlign: 'center' }}>
-            <span style={{ display: 'inline-block', padding: '7px 20px', borderRadius: 999, background: '#fff', border: '1.5px solid #DCE8FC', color: '#3B7BF0', fontWeight: 700, fontSize: 14, marginBottom: 24 }}>✦ 90秒でわかる</span>
             <h2 style={{ ...heading, fontSize: 'var(--lp-h2-size)', lineHeight: 1.3, marginBottom: 18 }}>動画で見る、Topipet</h2>
             <p style={{ color: '#54617C', fontSize: 18, lineHeight: 1.85, fontWeight: 500, maxWidth: 640, margin: '0 auto 44px' }}>
               記憶の登録から共有、友だちとの話題づくりまで。<br />AIペットと過ごす毎日を、まるごとご紹介します。
             </p>
 
             <div style={{ position: 'relative', borderRadius: 28, overflow: 'hidden', boxShadow: '0 40px 90px rgba(46,86,170,.22)', border: '1px solid #E1EAFA', background: '#fff' }}>
-              <div style={{ position: 'relative', aspectRatio: '16/9', background: 'repeating-linear-gradient(135deg,#EEF4FF 0 22px,#E6EFFD 22px 44px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <button aria-label="動画を再生" style={{ position: 'relative', width: 100, height: 100, borderRadius: '50%', border: 'none', background: '#3B7BF0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 16px 40px rgba(59,123,240,.45)', zIndex: 2 }}>
-                  <span style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: '#3B7BF0', animation: 'lp-rippling 2.4s ease-out infinite', zIndex: -1 }} />
-                  <span style={{ width: 0, height: 0, borderStyle: 'solid', borderWidth: '16px 0 16px 27px', borderColor: 'transparent transparent transparent #fff', marginLeft: 6 }} />
-                </button>
-                <span style={{ position: 'absolute', bottom: 18, left: 0, right: 0, fontFamily: "'Courier New',monospace", fontSize: 13, color: '#8AA0C6', letterSpacing: '.05em' }}>紹介動画をここに差し替え（16:9）</span>
-              </div>
+              <iframe src="https://www.youtube.com/embed/qXSHMKpFnSA" title="Topipet 紹介動画" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowFullScreen style={{ display: 'block', width: '100%', aspectRatio: '16/9', border: 'none', background: '#000' }} />
             </div>
-            <p style={{ marginTop: 22, color: '#8496B4', fontSize: 14, fontWeight: 500 }}>※ プレースホルダーです。ご用意の動画に差し替えできます。</p>
           </div>
         </section>
 
